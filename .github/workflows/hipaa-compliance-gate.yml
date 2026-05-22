@@ -1,0 +1,103 @@
+name: HIPAA Compliance Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  compliance-gate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::973191046894:role/cgep-grc-gate
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ./terraform
+        run: |
+          terraform plan -out=tfplan
+          terraform show -json tfplan > plan.json
+
+      - name: Install Conftest
+        run: |
+          wget https://github.com/open-policy-agent/conftest/releases/download/v0.55.0/conftest_0.55.0_Linux_x86_64.tar.gz
+          tar xzf conftest_0.55.0_Linux_x86_64.tar.gz
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+
+      - name: Policy Check (Conftest)
+        working-directory: ./terraform
+        run: |
+          conftest test plan.json -p ../policies/hipaa/ --all-namespaces
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: ./terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Install Cosign
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Bundle and Sign Evidence
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: ./terraform
+        run: |
+          # Create evidence bundle
+          mkdir -p evidence
+          cp plan.json evidence/
+          cp tfplan evidence/ || true
+          
+          # Create tarball
+          BUNDLE_NAME="evidence-${{ github.run_id }}-${{ github.sha }}.tar.gz"
+          tar -czf "$BUNDLE_NAME" evidence/
+          
+          # Generate SHA256
+          sha256sum "$BUNDLE_NAME" | awk '{print $1}' > "$BUNDLE_NAME.sha256"
+          
+          # Sign with Cosign (keyless)
+          cosign sign-blob "$BUNDLE_NAME" \
+            --bundle "$BUNDLE_NAME.sig.bundle" \
+            --yes
+          
+          # Create receipt
+          echo "{\"run_id\":\"${{ github.run_id }}\",\"sha\":\"${{ github.sha }}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > receipt.json
+          
+          echo "BUNDLE_NAME=$BUNDLE_NAME" >> $GITHUB_ENV
+
+      - name: Upload to Evidence Vault
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: ./terraform
+        run: |
+          VAULT_BUCKET="acme-health-intake-evidence-vault-eca8c0d5"
+          RUN_PATH="runs/${{ github.run_id }}"
+          
+          aws s3 cp "$BUNDLE_NAME" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          aws s3 cp "$BUNDLE_NAME.sha256" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          aws s3 cp "$BUNDLE_NAME.sig.bundle" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          aws s3 cp receipt.json "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          
+          echo "Evidence uploaded to s3://$VAULT_BUCKET/$RUN_PATH/"
