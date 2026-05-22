@@ -16,7 +16,51 @@ resource "aws_kms_key" "phi" {
     HIPAAControl = "164-312-a-2-iv"
   }
 }
+# KMS key policy allowing CloudTrail to use the key
+resource "aws_kms_key_policy" "phi" {
+  key_id = aws_kms_key.phi.id
 
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::973191046894:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudTrail to encrypt logs"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action = [
+          "kms:GenerateDataKey",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringLike = {
+            "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:aws:cloudtrail:*:973191046894:trail/*"
+          }
+        }
+      },
+      {
+        Sid    = "Allow CloudTrail to describe key"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "kms:DescribeKey"
+        Resource = "*"
+      }
+    ]
+  })
+}
 resource "aws_kms_alias" "phi" {
   name          = "alias/${local.name_prefix}-phi"
   target_key_id = aws_kms_key.phi.key_id
