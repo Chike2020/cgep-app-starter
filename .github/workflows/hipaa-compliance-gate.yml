@@ -63,7 +63,7 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Bundle and Sign Evidence
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: false  # Disabled for now - manual deployment only
         working-directory: ./terraform
         run: |
           # Create evidence bundle
