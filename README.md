@@ -105,7 +105,7 @@ See [`controls-mapping.csv`](controls-mapping.csv) for the bidirectional gap →
 | GAP-05 | 164.312(e)(1) Lambda VPC isolation | CLOSED |
 | GAP-06 | SOC2 CC7.2 Lambda DLQ + concurrency | CLOSED |
 | GAP-07 | 164.312(a)(1) IAM least privilege | CLOSED |
-| GAP-08 | 164.312(b) API Gateway logging | OPEN (documented in OSCAL) |
+| GAP-08 | 164.312(b) API Gateway logging + throttling | CLOSED |
 
 ---
 

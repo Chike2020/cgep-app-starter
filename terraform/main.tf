@@ -237,7 +237,31 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.intake.id
   name        = "$default"
   auto_deploy = true
-  # GAP-08: no access_log_settings. Learner expected to wire CloudWatch logs.
+
+  # GAP-08 remediation: access logging to CloudWatch (HIPAA 164.312(b))
+  # JSON format captures the fields required for audit trail review
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access_logs.arn
+    format = jsonencode({
+      requestId       = "$context.requestId"
+      requestTime     = "$context.requestTime"
+      httpMethod      = "$context.httpMethod"
+      routeKey        = "$context.routeKey"
+      status          = "$context.status"
+      protocol        = "$context.protocol"
+      responseLength  = "$context.responseLength"
+      responseLatency = "$context.responseLatency"
+      sourceIp        = "$context.identity.sourceIp"
+      userAgent       = "$context.identity.userAgent"
+      errorMessage    = "$context.error.message"
+    })
+  }
+
+  # GAP-08 remediation: throttling to prevent abuse / resource exhaustion
+  default_route_settings {
+    throttling_burst_limit = 100
+    throttling_rate_limit  = 50
+  }
 }
 
 resource "aws_lambda_permission" "apigw" {

@@ -123,12 +123,14 @@
                   {
                     "statement-id": "hipaa-164.312-b-stmt-1",
                     "uuid": "91bf38d6-af88-43b3-bbce-fe1bc4ee406a",
-                    "description": "CloudTrail trail aws_cloudtrail.main: multi-region, log-file-validation enabled, data events for S3 object operations on uploads bucket and DynamoDB table operations. Logs KMS-encrypted and stored in dedicated bucket. Evidence vault aws_s3_bucket.evidence_vault uses COMPLIANCE Object Lock (90-day retention) for CI/CD-signed artifacts. AWS Config rules in aws_config_config_rule.* and drift-detection Lambda aws_lambda_function.drift_detector provide continuous monitoring."
+                    "description": "GAP-08 remediated: aws_apigatewayv2_stage.default now has access_log_settings with destination_arn pointing to aws_cloudwatch_log_group.api_access_logs (90-day retention) and default_route_settings throttling (burst=100, rate=50). Log format captures requestId, requestTime, httpMethod, routeKey, status, sourceIp, userAgent, and errorMessage fields required for HIPAA activity review. Rego policy gap08_api_gw_logging enforces access_log_settings and non-zero throttling at CI/CD plan time. Additionally: CloudTrail trail aws_cloudtrail.main (multi-region, log-file-validation, KMS-encrypted, data events for S3+DynamoDB); evidence vault aws_s3_bucket.evidence_vault (COMPLIANCE Object Lock, 90-day retention, Cosign-signed bundles); AWS Config rules aws_config_config_rule.* with drift-detection Lambda aws_lambda_function.drift_detector providing continuous monitoring."
                   }
                 ],
                 "props": [
                   { "name": "implementation-status", "value": "implemented" },
-                  { "name": "terraform-resources", "value": "aws_cloudtrail.main, aws_s3_bucket.evidence_vault, aws_s3_bucket_object_lock_configuration.evidence_vault, aws_config_configuration_recorder.hipaa, aws_lambda_function.drift_detector" }
+                  { "name": "gap-ids", "value": "GAP-08" },
+                  { "name": "terraform-resources", "value": "aws_apigatewayv2_stage.default, aws_cloudwatch_log_group.api_access_logs, aws_cloudtrail.main, aws_s3_bucket.evidence_vault, aws_s3_bucket_object_lock_configuration.evidence_vault, aws_config_configuration_recorder.hipaa, aws_lambda_function.drift_detector" },
+                  { "name": "rego-policies", "value": "policies/hipaa/gap08_api_gw_logging.rego" }
                 ],
                 "responsible-roles": [{ "role-id": "provider" }]
               },

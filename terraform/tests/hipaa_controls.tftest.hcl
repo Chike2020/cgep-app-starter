@@ -169,3 +169,26 @@ run "monitoring_drift_detector_has_dlq" {
     error_message = "Drift detector Lambda must have reserved concurrency set"
   }
 }
+
+######################################################################
+# GAP-08: API Gateway access logging and throttling
+######################################################################
+
+run "gap08_api_gw_access_logging_enabled" {
+  command = plan
+
+  assert {
+    condition     = length(aws_apigatewayv2_stage.default.access_log_settings) > 0
+    error_message = "GAP-08: API Gateway stage must have access_log_settings configured for HIPAA 164.312(b) audit controls"
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_group.api_access_logs.retention_in_days == 90
+    error_message = "GAP-08: API Gateway access log group must retain logs for 90 days"
+  }
+
+  assert {
+    condition     = one(aws_apigatewayv2_stage.default.default_route_settings).throttling_burst_limit > 0
+    error_message = "GAP-08: API Gateway stage must have throttling_burst_limit > 0 to prevent resource exhaustion"
+  }
+}

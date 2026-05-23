@@ -200,3 +200,21 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
   role       = aws_iam_role.lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
+
+######################################################################
+# GAP-08: API Gateway Access Logging + Throttling
+# HIPAA 164.312(b) - Audit Controls
+# Note: HTTP API v2 writes to CloudWatch via the apigateway.amazonaws.com
+# service principal — no account-level aws_api_gateway_account resource
+# is needed, so this change has zero impact on other API Gateways.
+######################################################################
+
+resource "aws_cloudwatch_log_group" "api_access_logs" {
+  name              = "/aws/apigateway/${local.name_prefix}-access-logs-${local.suffix}"
+  retention_in_days = 90
+
+  tags = {
+    Compliance   = "hipaa"
+    HIPAAControl = "164-312-b"
+  }
+}

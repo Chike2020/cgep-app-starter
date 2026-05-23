@@ -11,9 +11,9 @@
 This capstone demonstrates enterprise-grade HIPAA compliance automation for a cloud-native patient intake API. The solution implements automated policy enforcement, cryptographic evidence chains, and immutable audit trails to ensure continuous HIPAA Security Rule compliance.
 
 **Key Achievements:**
-- 7 of 8 security gaps closed with Infrastructure-as-Code
-- 7 automated Rego policies enforcing HIPAA controls (GAP-01 through GAP-07)
-- 100% policy test coverage (17/17 OPA tests passing)
+- All 8 security gaps closed with Infrastructure-as-Code
+- 8 automated Rego policies enforcing HIPAA controls (GAP-01 through GAP-08)
+- 100% policy test coverage (20/20 OPA tests passing)
 - Full CI/CD pipeline with fail-closed compliance gates and artifact preservation
 - Cryptographically signed evidence bundles in immutable vault with daily scheduled collection
 - Continuous monitoring: AWS Config rules + EventBridge + drift detection Lambda
@@ -25,7 +25,7 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 - **Risk Reduction:** Automated detection prevents violations at deploy time and detects runtime drift daily
 - **Audit Readiness:** Immutable evidence trail with 90-day retention, Cosign signatures, daily scheduled collection
 - **Cost Savings:** Infrastructure-as-Code eliminates manual compliance reviews
-- **Security Posture:** 87.5% gap closure rate (7 of 8 controls implemented)
+- **Security Posture:** 100% gap closure rate (8 of 8 controls implemented)
 
 ---
 
@@ -108,11 +108,9 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 | GAP-05 | HIPAA 164.312(e)(1) | Lambda outside VPC | ✅ CLOSED |
 | GAP-06 | SOC 2 CC7.2 | Lambda has no DLQ or reserved concurrency | ✅ CLOSED |
 | GAP-07 | HIPAA 164.312(a)(1) | IAM wildcard permissions | ✅ CLOSED |
-| GAP-08 | HIPAA 164.312(b) | API Gateway access logging | ⚠️ OPEN — documented in OSCAL |
+| GAP-08 | HIPAA 164.312(b) | API Gateway access logging | ✅ CLOSED |
 
-**Gap Closure Rate:** 87.5% (7 of 8 gaps closed)
-
-GAP-08 remains open. API Gateway v2 (HTTP API) does not support native access logging in the same way as REST APIs — enabling it requires a dedicated CloudWatch Logs role and log group wired to the stage. CloudTrail already captures all management-plane API calls; the gap is in data-plane request/response logging. This is documented in the OSCAL component as a known open item with compensating controls noted.
+**Gap Closure Rate:** 100% (8 of 8 gaps closed)
 
 ### Remediation Summary
 
@@ -126,7 +124,7 @@ GAP-08 remains open. API Gateway v2 (HTTP API) does not support native access lo
 - Created evidence vault with S3 Object Lock COMPLIANCE mode, 90-day retention
 
 **Automated Enforcement**
-- Created 7 Rego policies (one per closed gap, GAP-01 through GAP-07)
+- Created 8 Rego policies (one per closed gap, GAP-01 through GAP-08)
 - Built GitHub Actions pipeline with fail-closed Conftest policy gate
 - Implemented cryptographic signing with Cosign keyless signing
 - Configured S3 backend for shared Terraform state
@@ -311,20 +309,67 @@ resource "aws_iam_role_policy" "lambda_least_privilege" {
 - Wildcard `dynamodb:*` and `s3:*` from starter replaced with four specific actions
 - Resource scope pinned to named bucket and table ARNs
 
-### 7. Audit Logging — CloudTrail (GAP-08 partial / compensating control)
+### 7. API Gateway Access Logging and Throttling (GAP-08)
 
 **HIPAA Requirement:** 164.312(b) — Audit Controls
 
-API Gateway data-plane access logging remains open (see gap analysis). As a compensating control, CloudTrail captures all management-plane API calls and S3/DynamoDB data events:
+**Implementation:**
+```hcl
+resource "aws_cloudwatch_log_group" "api_access_logs" {
+  name              = "/aws/apigateway/${local.name_prefix}-access-logs-${local.suffix}"
+  retention_in_days = 90
+  tags = { Compliance = "hipaa", HIPAAControl = "164-312-b" }
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.intake.id
+  name        = "$default"
+  auto_deploy = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access_logs.arn
+    format = jsonencode({
+      requestId       = "$context.requestId"
+      requestTime     = "$context.requestTime"
+      httpMethod      = "$context.httpMethod"
+      routeKey        = "$context.routeKey"
+      status          = "$context.status"
+      responseLatency = "$context.responseLatency"
+      sourceIp        = "$context.identity.sourceIp"
+      userAgent       = "$context.identity.userAgent"
+      errorMessage    = "$context.error.message"
+    })
+  }
+
+  default_route_settings {
+    throttling_burst_limit = 100
+    throttling_rate_limit  = 50
+  }
+}
+```
+
+**Why HTTP API v2 needs no account-level role:** For REST APIs (v1), enabling execution logs requires `aws_api_gateway_account` to point to a CloudWatch IAM role — a single account-level resource that would affect every other API Gateway in the account. HTTP APIs (v2) write access logs directly via the `apigateway.amazonaws.com` service principal, which CloudWatch Logs accepts without a separately configured account role. This implementation is fully scoped to this stage.
+
+**Policy Enforcement:**
+- `gap08_api_gw_logging.rego` — Detects any `aws_apigatewayv2_stage` missing `access_log_settings` or with `throttling_burst_limit = 0`
+
+**Evidence:**
+- Log group: `/aws/apigateway/acme-health-intake-access-logs-<suffix>` with 90-day retention
+- Log format: JSON capturing `requestId`, `requestTime`, `httpMethod`, `routeKey`, `status`, `sourceIp`, `userAgent`, `errorMessage`
+- Throttling: 100 burst / 50 steady-state requests per second
+
+### 8. CloudTrail Multi-Region Audit Logging
+
+**HIPAA Requirement:** 164.312(b) — Audit Controls (management plane + data events)
 
 ```hcl
 resource "aws_cloudtrail" "main" {
-  name                       = "acme-health-intake-trail"
-  s3_bucket_name             = aws_s3_bucket.cloudtrail_logs.id
+  name                          = "acme-health-intake-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail_logs.id
   include_global_service_events = true
-  is_multi_region_trail      = true
-  enable_log_file_validation = true
-  kms_key_id                 = aws_kms_key.phi.arn
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+  kms_key_id                    = aws_kms_key.phi.arn
 
   event_selector {
     include_management_events = true
@@ -405,7 +450,8 @@ deny contains msg if {
 | `gap05_lambda_vpc` | 2 | ✅ 2/2 |
 | `gap06_lambda_dlq_concurrency` | 4 | ✅ 4/4 |
 | `gap07_iam_least_privilege` | 2 | ✅ 2/2 |
-| **Total** | **17** | **✅ 17/17** |
+| `gap08_api_gw_logging` | 3 | ✅ 3/3 |
+| **Total** | **20** | **✅ 20/20** |
 
 Each policy has pass, fail, and non-PHI-resource (ignored) scenarios.
 
@@ -415,7 +461,7 @@ Each policy has pass, fail, and non-PHI-resource (ignored) scenarios.
 1. **Terraform Format Check** — `terraform fmt -check -recursive` (blocks on formatting violations)
 2. **Terraform Validate** — Syntax and schema validation
 3. **Terraform Plan** — Generate execution plan; export `plan.json`
-4. **Conftest Policy Check** — Enforce all 7 Rego policies (GATE — exits non-zero on any violation)
+4. **Conftest Policy Check** — Enforce all 8 Rego policies (GATE — exits non-zero on any violation)
 5. **OPA Unit Tests** — Run all `gap*_test.rego` suites; emit `opa-test-results.txt` artifact
 6. **Upload Scan Artifacts** — `conftest-results.json` + `opa-test-results.txt` + `plan.json` preserved 90 days
 7. **Terraform Apply** — Deploy (main branch push or daily schedule only)
@@ -593,7 +639,7 @@ Uses `mock_provider "aws"` — all 10 tests run at plan time with no real AWS cr
 **OSCAL Version:** 1.0.4
 **Component UUID:** `91bd22f6-66b9-4f56-9cb8-3ddeaef0a5d0`
 
-The OSCAL component definition documents 7 implemented HIPAA/SOC 2 controls in machine-readable format:
+The OSCAL component definition documents all 8 implemented controls in machine-readable format:
 
 | Control ID | Title | Gaps |
 |-----------|-------|------|
@@ -601,7 +647,7 @@ The OSCAL component definition documents 7 implemented HIPAA/SOC 2 controls in m
 | `hipaa-164.312-e.1` | Transmission Security | GAP-03, GAP-05 |
 | `hipaa-164.308-a.7` | Contingency Plan | GAP-04 |
 | `hipaa-164.312-a.1` | Access Control | GAP-07 |
-| `hipaa-164.312-b` | Audit Controls | CloudTrail + Evidence Vault |
+| `hipaa-164.312-b` | Audit Controls | GAP-08 + CloudTrail + Evidence Vault |
 | `hipaa-164.308-a.1.ii.D` | Information System Activity Review | Monitoring pipeline |
 | `soc2-cc7.2` | System Monitoring / Availability | GAP-06 |
 
@@ -657,7 +703,7 @@ trestle validate -t component-definition -n patient-intake-api
 ## Future Work
 
 ### Short Term
-- **Close GAP-08:** Enable API Gateway access logging via CloudWatch Logs role + `default_route_settings.logging_level`
+- **WAF on API Gateway:** Add `aws_wafv2_web_acl` + association for rate-limiting and SQL-injection protection on the `/intake` endpoint (the remaining sub-item from GAP-08 not covered by throttling alone)
 - **Tighter Config delivery IAM:** Replace the Config role's `AWS_ConfigRole` managed policy attachment with a scoped custom policy limited to the specific delivery bucket
 
 ### Medium Term
