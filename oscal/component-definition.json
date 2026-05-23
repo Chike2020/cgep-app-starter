@@ -1,14 +1,20 @@
 {
   "component-definition": {
-    "uuid": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+    "uuid": "9fd21b8a-d448-41e3-946f-0533674ab6b8",
     "metadata": {
       "title": "ACME Health Patient Intake API - HIPAA Compliance Component",
       "last-modified": "2026-05-23T00:00:00Z",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "oscal-version": "1.0.4",
+      "roles": [
+        {
+          "id": "provider",
+          "title": "Service Provider"
+        }
+      ],
       "parties": [
         {
-          "uuid": "b2c3d4e5-f6a7-5b6c-9d0e-1f2a3b4c5d6e",
+          "uuid": "fbfe5ee8-2c4e-453e-b3e3-f844a6070c9f",
           "type": "organization",
           "name": "ACME Health"
         }
@@ -16,176 +22,133 @@
     },
     "components": [
       {
-        "uuid": "c3d4e5f6-a7b8-6c7d-0e1f-2a3b4c5d6e7f",
+        "uuid": "91bd22f6-66b9-4f56-9cb8-3ddeaef0a5d0",
         "type": "software",
         "title": "Patient Intake API",
-        "description": "HIPAA-compliant patient intake API with automated policy enforcement",
+        "description": "HIPAA-compliant patient intake API with automated policy enforcement, KMS encryption, VPC isolation, least-privilege IAM, CloudTrail audit logging, and cryptographic evidence chains.",
         "purpose": "Provides secure PHI collection and storage with encryption, access controls, and audit logging",
         "responsible-roles": [
           {
             "role-id": "provider",
-            "party-uuids": ["b2c3d4e5-f6a7-5b6c-9d0e-1f2a3b4c5d6e"]
+            "party-uuids": ["fbfe5ee8-2c4e-453e-b3e3-f844a6070c9f"]
           }
         ],
         "control-implementations": [
           {
-            "uuid": "d4e5f6a7-b8c9-7d8e-1f2a-3b4c5d6e7f8a",
-            "source": "https://www.hhs.gov/hipaa/for-professionals/security/index.html",
-            "description": "HIPAA Security Rule Implementation",
+            "uuid": "c1f03bc4-2d5b-4bf3-b814-789a2244bffa",
+            "source": "https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html",
+            "description": "HIPAA Security Rule (45 CFR Part 164) implementation for the Patient Intake API. Controls mapped to the Security Standards Matrix published by HHS Office for Civil Rights.",
             "implemented-requirements": [
               {
-                "uuid": "e5f6a7b8-c9d0-8e9f-2a3b-4c5d6e7f8a9b",
-                "control-id": "164.312(a)(2)(iv)",
-                "description": "Encryption and Decryption - Implement a mechanism to encrypt and decrypt ePHI",
+                "uuid": "d0265390-6f33-41d1-a4f5-7d7b325214fe",
+                "control-id": "hipaa-164.312-a.2.iv",
+                "description": "Encryption and Decryption — implement a mechanism to encrypt and decrypt ePHI (addressable).",
                 "statements": [
                   {
-                    "statement-id": "164.312(a)(2)(iv)-stmt",
-                    "uuid": "f6a7b8c9-d0e1-9f0a-3b4c-5d6e7f8a9b0c",
-                    "description": "KMS Customer-Managed Keys (CMK) encrypt all PHI at rest in S3 buckets and DynamoDB tables. Automated policy enforcement prevents deployment of PHI resources without CMK encryption."
+                    "statement-id": "hipaa-164.312-a.2.iv-stmt-1",
+                    "uuid": "135a0ef5-36f4-497a-8c0b-a3baaeb6f77a",
+                    "description": "AWS KMS Customer-Managed Key (CMK) aws_kms_key.phi encrypts all PHI at rest in S3 (aws_s3_bucket_server_side_encryption_configuration.uploads) and DynamoDB (aws_dynamodb_table.intake_compliant, server_side_encryption.kms_key_arn). Auto-rotation enabled. Rego policies gap01 and gap02 enforce CMK encryption at CI/CD time via conftest."
                   }
                 ],
                 "props": [
-                  {
-                    "name": "implementation-status",
-                    "value": "implemented"
-                  },
-                  {
-                    "name": "gap-id",
-                    "value": "GAP-01, GAP-02"
-                  }
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap-ids", "value": "GAP-01,GAP-02" },
+                  { "name": "terraform-resources", "value": "aws_kms_key.phi, aws_s3_bucket_server_side_encryption_configuration.uploads, aws_dynamodb_table.intake_compliant" },
+                  { "name": "rego-policies", "value": "policies/hipaa/gap01_s3_kms_encryption.rego, policies/hipaa/gap02_dynamodb_kms.rego" }
                 ],
-                "responsible-roles": [
-                  {
-                    "role-id": "provider"
-                  }
-                ]
+                "responsible-roles": [{ "role-id": "provider" }]
               },
               {
-                "uuid": "a7b8c9d0-e1f2-0a1b-4c5d-6e7f8a9b0c1d",
-                "control-id": "164.312(e)(1)",
-                "description": "Transmission Security - Implement technical security measures to guard against unauthorized access to ePHI transmitted over electronic communications networks",
+                "uuid": "7c6e388d-e8c9-4be9-a0b3-371756665555",
+                "control-id": "hipaa-164.312-e.1",
+                "description": "Transmission Security — implement technical security measures to guard against unauthorized access to ePHI transmitted over electronic communications networks.",
                 "statements": [
                   {
-                    "statement-id": "164.312(e)(1)-stmt",
-                    "uuid": "b8c9d0e1-f2a3-1b2c-5d6e-7f8a9b0c1d2e",
-                    "description": "S3 bucket policies enforce TLS-only access (aws:SecureTransport). Lambda functions handling PHI are deployed in VPC with security groups controlling network access. Automated policies block deployment of PHI resources allowing non-TLS access."
+                    "statement-id": "hipaa-164.312-e.1-stmt-1",
+                    "uuid": "52845617-d374-48f8-ba81-d0cbd610fe91",
+                    "description": "S3 bucket policy aws_s3_bucket_policy.uploads_tls_only denies all requests where aws:SecureTransport is false (GAP-03). Lambda aws_lambda_function.intake_vpc deploys in aws_subnet.private subnets with aws_security_group.lambda restricting egress (GAP-05). Rego policies gap03 and gap05 enforce these controls at plan time."
                   }
                 ],
                 "props": [
-                  {
-                    "name": "implementation-status",
-                    "value": "implemented"
-                  },
-                  {
-                    "name": "gap-id",
-                    "value": "GAP-03, GAP-05"
-                  }
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap-ids", "value": "GAP-03,GAP-05" },
+                  { "name": "terraform-resources", "value": "aws_s3_bucket_policy.uploads_tls_only, aws_lambda_function.intake_vpc, aws_security_group.lambda, aws_subnet.private" },
+                  { "name": "rego-policies", "value": "policies/hipaa/gap03_s3_tls_only.rego, policies/hipaa/gap05_lambda_vpc.rego" }
                 ],
-                "responsible-roles": [
-                  {
-                    "role-id": "provider"
-                  }
-                ]
+                "responsible-roles": [{ "role-id": "provider" }]
               },
               {
-                "uuid": "c9d0e1f2-a3b4-2c3d-6e7f-8a9b0c1d2e3f",
-                "control-id": "164.308(a)(7)",
-                "description": "Contingency Plan - Establish (and implement as needed) procedures to restore any loss of data",
+                "uuid": "8cbb1e3d-3527-4d7e-8f75-73ab590f8a5e",
+                "control-id": "hipaa-164.308-a.7",
+                "description": "Contingency Plan — establish and implement procedures to restore any loss of data (data backup plan).",
                 "statements": [
                   {
-                    "statement-id": "164.308(a)(7)-stmt",
-                    "uuid": "d0e1f2a3-b4c5-3d4e-7f8a-9b0c1d2e3f4a",
-                    "description": "S3 versioning enabled on all PHI buckets. DynamoDB point-in-time recovery (PITR) enabled. Automated policy enforcement prevents deployment of PHI resources without versioning."
+                    "statement-id": "hipaa-164.308-a.7-stmt-1",
+                    "uuid": "dc0fea8e-decf-4b1e-9c31-494c3693016a",
+                    "description": "S3 versioning aws_s3_bucket_versioning.uploads enabled on the PHI uploads bucket (GAP-04). DynamoDB PITR aws_dynamodb_table.intake_compliant.point_in_time_recovery enabled. Rego policy gap04 enforces versioning at plan time."
                   }
                 ],
                 "props": [
-                  {
-                    "name": "implementation-status",
-                    "value": "implemented"
-                  },
-                  {
-                    "name": "gap-id",
-                    "value": "GAP-04"
-                  }
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap-ids", "value": "GAP-04" },
+                  { "name": "terraform-resources", "value": "aws_s3_bucket_versioning.uploads, aws_dynamodb_table.intake_compliant (point_in_time_recovery)" },
+                  { "name": "rego-policies", "value": "policies/hipaa/gap04_s3_versioning.rego" }
                 ],
-                "responsible-roles": [
-                  {
-                    "role-id": "provider"
-                  }
-                ]
+                "responsible-roles": [{ "role-id": "provider" }]
               },
               {
-                "uuid": "e1f2a3b4-c5d6-4e5f-8a9b-0c1d2e3f4a5b",
-                "control-id": "164.312(a)(1)",
-                "description": "Access Control - Implement technical policies and procedures for electronic information systems that maintain ePHI to allow access only to those persons or software programs that have been granted access rights",
+                "uuid": "9770c84c-ec97-4729-a458-e20361d792ae",
+                "control-id": "hipaa-164.312-a.1",
+                "description": "Access Control — implement technical policies and procedures to allow access only to authorized persons or programs.",
                 "statements": [
                   {
-                    "statement-id": "164.312(a)(1)-stmt",
-                    "uuid": "f2a3b4c5-d6e7-5f6a-9b0c-1d2e3f4a5b6c",
-                    "description": "IAM policies implement least privilege principle with specific actions (no wildcards). Lambda execution roles grant only required permissions. Automated policy enforcement blocks deployment of overly permissive IAM policies."
+                    "statement-id": "hipaa-164.312-a.1-stmt-1",
+                    "uuid": "aa1f5446-10be-4c33-9c76-cecfaa192247",
+                    "description": "IAM role policy aws_iam_role_policy.lambda_least_privilege restricts Lambda to specific actions (dynamodb:PutItem, GetItem, Query; s3:PutObject, GetObject) on named resources only, replacing the wildcard policy (GAP-07). Rego policy gap07 enforces no-wildcard IAM at plan time."
                   }
                 ],
                 "props": [
-                  {
-                    "name": "implementation-status",
-                    "value": "implemented"
-                  },
-                  {
-                    "name": "gap-id",
-                    "value": "GAP-07"
-                  }
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap-ids", "value": "GAP-07" },
+                  { "name": "terraform-resources", "value": "aws_iam_role_policy.lambda_least_privilege" },
+                  { "name": "rego-policies", "value": "policies/hipaa/gap07_iam_least_privilege.rego" }
                 ],
-                "responsible-roles": [
-                  {
-                    "role-id": "provider"
-                  }
-                ]
+                "responsible-roles": [{ "role-id": "provider" }]
               },
               {
-                "uuid": "a3b4c5d6-e7f8-6a7b-0c1d-2e3f4a5b6c7d",
-                "control-id": "164.312(b)",
-                "description": "Audit Controls - Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use ePHI",
+                "uuid": "ff2e4e2d-9205-4024-aca6-f2070d242c8e",
+                "control-id": "hipaa-164.312-b",
+                "description": "Audit Controls — implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems containing ePHI.",
                 "statements": [
                   {
-                    "statement-id": "164.312(b)-stmt",
-                    "uuid": "b4c5d6e7-f8a9-7b8c-1d2e-3f4a5b6c7d8e",
-                    "description": "CloudTrail multi-region trail with log file validation enabled. Data events capture all S3 object operations and DynamoDB table operations on PHI resources. Logs encrypted with KMS and stored in dedicated S3 bucket with Object Lock (90-day retention)."
+                    "statement-id": "hipaa-164.312-b-stmt-1",
+                    "uuid": "91bf38d6-af88-43b3-bbce-fe1bc4ee406a",
+                    "description": "CloudTrail trail aws_cloudtrail.main: multi-region, log-file-validation enabled, data events for S3 object operations on uploads bucket and DynamoDB table operations. Logs KMS-encrypted and stored in dedicated bucket. Evidence vault aws_s3_bucket.evidence_vault uses COMPLIANCE Object Lock (90-day retention) for CI/CD-signed artifacts. AWS Config rules in aws_config_config_rule.* and drift-detection Lambda aws_lambda_function.drift_detector provide continuous monitoring."
                   }
                 ],
                 "props": [
-                  {
-                    "name": "implementation-status",
-                    "value": "implemented"
-                  }
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "terraform-resources", "value": "aws_cloudtrail.main, aws_s3_bucket.evidence_vault, aws_s3_bucket_object_lock_configuration.evidence_vault, aws_config_configuration_recorder.hipaa, aws_lambda_function.drift_detector" }
                 ],
-                "responsible-roles": [
-                  {
-                    "role-id": "provider"
-                  }
-                ]
+                "responsible-roles": [{ "role-id": "provider" }]
               },
               {
-                "uuid": "c5d6e7f8-a9b0-8c9d-2e3f-4a5b6c7d8e9f",
-                "control-id": "164.308(a)(1)(ii)(D)",
-                "description": "Information System Activity Review - Implement procedures to regularly review records of information system activity",
+                "uuid": "a8aa4a1c-e364-4f67-b881-04c8fca2e4de",
+                "control-id": "hipaa-164.308-a.1.ii.D",
+                "description": "Information System Activity Review — implement procedures to regularly review records of information system activity (audit logs, access reports, security incident tracking).",
                 "statements": [
                   {
-                    "statement-id": "164.308(a)(1)(ii)(D)-stmt",
-                    "uuid": "d6e7f8a9-b0c1-9d0e-3f4a-5b6c7d8e9f0a",
-                    "description": "Evidence vault stores cryptographically signed compliance evidence bundles with Object Lock. GitHub Actions pipeline generates audit evidence for every infrastructure change. Cosign signatures provide non-repudiation."
+                    "statement-id": "hipaa-164.308-a.1.ii.D-stmt-1",
+                    "uuid": "f2a3b4c5-d6e7-4f6a-9b0c-1d2e3f4a5b6c",
+                    "description": "Every push to main triggers GitHub Actions (.github/workflows/hipaa-compliance-gate.yml): Terraform plan, conftest policy check, apply, Cosign keyless sign, upload to evidence vault. Daily schedule (cron 0 2 * * *) collects evidence independently of code changes. Drift-detection Lambda runs daily via EventBridge aws_cloudwatch_event_rule.daily_drift_check, queries AWS Config rules, and publishes violations to SNS aws_sns_topic.compliance_alerts."
                   }
                 ],
                 "props": [
-                  {
-                    "name": "implementation-status",
-                    "value": "implemented"
-                  }
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "terraform-resources", "value": "aws_cloudwatch_event_rule.daily_drift_check, aws_lambda_function.drift_detector, aws_sns_topic.compliance_alerts" },
+                  { "name": "ci-workflow", "value": ".github/workflows/hipaa-compliance-gate.yml" }
                 ],
-                "responsible-roles": [
-                  {
-                    "role-id": "provider"
-                  }
-                ]
+                "responsible-roles": [{ "role-id": "provider" }]
               }
             ]
           }
