@@ -10,7 +10,7 @@
 
 resource "aws_config_configuration_recorder" "hipaa" {
   name     = "${local.name_prefix}-config-recorder"
-  role_arn = aws_iam_role.config.arn
+  role_arn = aws_iam_service_linked_role.config.arn
 
   recording_group {
     all_supported                 = true
@@ -33,27 +33,15 @@ resource "aws_config_configuration_recorder_status" "hipaa" {
   depends_on = [aws_config_delivery_channel.hipaa]
 }
 
-resource "aws_iam_role" "config" {
-  name = "${local.name_prefix}-config-role-${local.suffix}"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "config.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-
-  tags = {
-    Compliance   = "hipaa"
-    HIPAAControl = "164-312-b"
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "config" {
-  role       = aws_iam_role.config.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+# AWS Config service-linked role — uses iam:CreateServiceLinkedRole (included in
+# PowerUserAccess), so CI can create it without needing iam:CreateRole.
+#
+# If this role already exists in your account, import it before applying:
+#   terraform import aws_iam_service_linked_role.config \
+#     arn:aws:iam::973191046894:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig
+resource "aws_iam_service_linked_role" "config" {
+  aws_service_name = "config.amazonaws.com"
+  description      = "Service-linked role for AWS Config (HIPAA 164.312(b))"
 }
 
 ######################################################################
@@ -243,27 +231,12 @@ resource "aws_sns_topic_policy" "compliance_alerts" {
 # Triggered by EventBridge schedule (daily) and on Config NON_COMPLIANT
 ######################################################################
 
-resource "aws_iam_role" "drift_detector" {
-  name = "${local.name_prefix}-drift-detector-${local.suffix}"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-
-  tags = {
-    Compliance   = "hipaa"
-    HIPAAControl = "164-312-b"
-  }
-}
-
+# Drift detector reuses aws_iam_role.lambda (defined in main.tf).
+# An additional inline policy grants the read-only Config/SNS permissions needed
+# for drift checking, without requiring iam:CreateRole in CI.
 resource "aws_iam_role_policy" "drift_detector" {
   name = "drift-detector-policy"
-  role = aws_iam_role.drift_detector.id
+  role = aws_iam_role.lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -297,11 +270,6 @@ resource "aws_iam_role_policy" "drift_detector" {
       }
     ]
   })
-}
-
-resource "aws_iam_role_policy_attachment" "drift_detector_basic" {
-  role       = aws_iam_role.drift_detector.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 data "archive_file" "drift_detector" {
@@ -361,7 +329,7 @@ PYTHON
 
 resource "aws_lambda_function" "drift_detector" {
   function_name    = "${local.name_prefix}-drift-detector-${local.suffix}"
-  role             = aws_iam_role.drift_detector.arn
+  role             = aws_iam_role.lambda.arn
   handler          = "drift_detector.handler"
   runtime          = "python3.12"
   filename         = data.archive_file.drift_detector.output_path
