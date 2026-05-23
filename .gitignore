@@ -9,8 +9,17 @@ tfplan
 *.tfplan
 crash.log
 
-# Lambda build
+# Lambda build artifacts
 terraform/lambda/handler.zip
+terraform/lambda/drift_detector.zip
+
+# CI pipeline runtime artifacts
+receipt.json
+conftest-results.json
+opa-test-results.txt
+evidence-*.tar.gz
+evidence-*.tar.gz.sha256
+evidence-*.tar.gz.sig.bundle
 
 # Local
 evidence/
