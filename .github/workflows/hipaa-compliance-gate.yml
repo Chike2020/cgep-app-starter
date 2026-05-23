@@ -63,15 +63,15 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Bundle and Sign Evidence
-        if: false  # Disabled for now - manual deployment only
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         working-directory: ./terraform
         run: |
           # Create evidence bundle
           mkdir -p evidence
           cp plan.json evidence/
-          cp tfplan evidence/ || true
+          [ -f tfplan ] && cp tfplan evidence/ || true
           
-          # Create tarball
+          # Create tarball with fixed name
           BUNDLE_NAME="evidence-${{ github.run_id }}-${{ github.sha }}.tar.gz"
           tar -czf "$BUNDLE_NAME" evidence/
           
@@ -85,8 +85,6 @@ jobs:
           
           # Create receipt
           echo "{\"run_id\":\"${{ github.run_id }}\",\"sha\":\"${{ github.sha }}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > receipt.json
-          
-          echo "BUNDLE_NAME=$BUNDLE_NAME" >> $GITHUB_ENV
 
       - name: Upload to Evidence Vault
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -94,9 +92,14 @@ jobs:
         run: |
           VAULT_BUCKET="acme-health-intake-evidence-vault-eca8c0d5"
           RUN_PATH="runs/${{ github.run_id }}"
+          BUNDLE_NAME="evidence-${{ github.run_id }}-${{ github.sha }}.tar.gz"
           
           aws s3 cp "$BUNDLE_NAME" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
           aws s3 cp "$BUNDLE_NAME.sha256" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          aws s3 cp "$BUNDLE_NAME.sig.bundle" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          aws s3 cp receipt.json "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          
+          echo "Evidence uploaded to s3://$VAULT_BUCKET/$RUN_PATH/"STANDARD
           aws s3 cp "$BUNDLE_NAME.sig.bundle" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
           aws s3 cp receipt.json "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
           
