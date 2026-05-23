@@ -10,7 +10,7 @@
 
 resource "aws_config_configuration_recorder" "hipaa" {
   name     = "${local.name_prefix}-config-recorder"
-  role_arn = aws_iam_service_linked_role.config.arn
+  role_arn = aws_iam_role.config.arn
 
   recording_group {
     all_supported                 = true
@@ -18,10 +18,106 @@ resource "aws_config_configuration_recorder" "hipaa" {
   }
 }
 
+######################################################################
+# Dedicated S3 bucket for Config delivery
+# (keeps Config separate from CloudTrail to avoid circular bucket-policy
+#  dependency and satisfies the InsufficientDeliveryPolicyException)
+######################################################################
+
+resource "aws_s3_bucket" "config_delivery" {
+  bucket = "${local.name_prefix}-config-delivery-${local.suffix}"
+
+  tags = {
+    Purpose      = "config-delivery"
+    Compliance   = "hipaa"
+    HIPAAControl = "164-312-b"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "config_delivery" {
+  bucket = aws_s3_bucket.config_delivery.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.phi.arn
+    }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_versioning" "config_delivery" {
+  bucket = aws_s3_bucket.config_delivery.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "config_delivery" {
+  bucket = aws_s3_bucket.config_delivery.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "config_delivery" {
+  bucket = aws_s3_bucket.config_delivery.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowConfigWrite"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.config.arn
+        }
+        Action = ["s3:PutObject", "s3:GetBucketAcl"]
+        Resource = [
+          aws_s3_bucket.config_delivery.arn,
+          "${aws_s3_bucket.config_delivery.arn}/*"
+        ]
+      },
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.config_delivery.arn,
+          "${aws_s3_bucket.config_delivery.arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# KMS grant so the Config role can encrypt/decrypt objects in the delivery bucket
+resource "aws_kms_grant" "config_phi" {
+  name              = "${local.name_prefix}-config-phi-grant"
+  key_id            = aws_kms_key.phi.key_id
+  grantee_principal = aws_iam_role.config.arn
+
+  operations = [
+    "Decrypt",
+    "GenerateDataKey",
+    "DescribeKey"
+  ]
+}
+
 resource "aws_config_delivery_channel" "hipaa" {
   name           = "${local.name_prefix}-config-delivery"
-  s3_bucket_name = aws_s3_bucket.cloudtrail_logs.id
+  s3_bucket_name = aws_s3_bucket.config_delivery.id
   s3_key_prefix  = "config"
+  s3_kms_key_arn = aws_kms_key.phi.arn
 
   depends_on = [aws_config_configuration_recorder.hipaa]
 }
@@ -33,15 +129,27 @@ resource "aws_config_configuration_recorder_status" "hipaa" {
   depends_on = [aws_config_delivery_channel.hipaa]
 }
 
-# AWS Config service-linked role — uses iam:CreateServiceLinkedRole (included in
-# PowerUserAccess), so CI can create it without needing iam:CreateRole.
-#
-# If this role already exists in your account, import it before applying:
-#   terraform import aws_iam_service_linked_role.config \
-#     arn:aws:iam::973191046894:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig
-resource "aws_iam_service_linked_role" "config" {
-  aws_service_name = "config.amazonaws.com"
-  description      = "Service-linked role for AWS Config (HIPAA 164.312(b))"
+resource "aws_iam_role" "config" {
+  name = "${local.name_prefix}-config-role-${local.suffix}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "config.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Compliance   = "hipaa"
+    HIPAAControl = "164-312-b"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "config" {
+  role       = aws_iam_role.config.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
 }
 
 ######################################################################
@@ -231,12 +339,27 @@ resource "aws_sns_topic_policy" "compliance_alerts" {
 # Triggered by EventBridge schedule (daily) and on Config NON_COMPLIANT
 ######################################################################
 
-# Drift detector reuses aws_iam_role.lambda (defined in main.tf).
-# An additional inline policy grants the read-only Config/SNS permissions needed
-# for drift checking, without requiring iam:CreateRole in CI.
+resource "aws_iam_role" "drift_detector" {
+  name = "${local.name_prefix}-drift-detector-${local.suffix}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Compliance   = "hipaa"
+    HIPAAControl = "164-312-b"
+  }
+}
+
 resource "aws_iam_role_policy" "drift_detector" {
   name = "drift-detector-policy"
-  role = aws_iam_role.lambda.id
+  role = aws_iam_role.drift_detector.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -263,6 +386,20 @@ resource "aws_iam_role_policy" "drift_detector" {
         Resource = aws_sns_topic.compliance_alerts.arn
       },
       {
+        # Lambda needs sqs:SendMessage to write failed invocations to the DLQ
+        Sid      = "DLQ"
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.drift_detector_dlq.arn
+      },
+      {
+        # DLQ is KMS-encrypted — Lambda needs these to encrypt/decrypt DLQ messages
+        Sid      = "KMSForDLQ"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.phi.arn
+      },
+      {
         Sid      = "Logs"
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -270,6 +407,11 @@ resource "aws_iam_role_policy" "drift_detector" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "drift_detector_basic" {
+  role       = aws_iam_role.drift_detector.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 data "archive_file" "drift_detector" {
@@ -329,7 +471,7 @@ PYTHON
 
 resource "aws_lambda_function" "drift_detector" {
   function_name    = "${local.name_prefix}-drift-detector-${local.suffix}"
-  role             = aws_iam_role.lambda.arn
+  role             = aws_iam_role.drift_detector.arn
   handler          = "drift_detector.handler"
   runtime          = "python3.12"
   filename         = data.archive_file.drift_detector.output_path

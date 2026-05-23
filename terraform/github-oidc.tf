@@ -75,6 +75,42 @@ resource "aws_iam_role_policy" "github_evidence_vault" {
   })
 }
 
+# Scoped IAM permissions for monitoring.tf resources (AWS Config + drift detector).
+# PowerUserAccess blocks iam:CreateRole, iam:PutRolePolicy, iam:PassRole, and
+# iam:TagRole. This policy adds exactly those actions, restricted to the
+# acme-health-intake-* role name prefix so CI cannot touch any other IAM roles.
+resource "aws_iam_role_policy" "github_monitoring_iam" {
+  name = "monitoring-iam-permissions"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ManageMonitoringRoles"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:UpdateRole",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:PassRole"
+        ]
+        Resource = "arn:aws:iam::973191046894:role/acme-health-intake-*"
+      }
+    ]
+  })
+}
+
 output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
   description = "IAM role ARN for GitHub Actions OIDC"
