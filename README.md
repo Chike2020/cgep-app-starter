@@ -78,3 +78,231 @@ cgep-app-starter/
 ## License
 
 MIT. Fork freely. Submissions remain learners' own work.
+
+# HIPAA Compliance Automation - Patient Intake API
+
+[![HIPAA Compliance Gate](https://github.com/Chike2020/cgep-app-starter/actions/workflows/hipaa-compliance-gate.yml/badge.svg)](https://github.com/Chike2020/cgep-app-starter/actions/workflows/hipaa-compliance-gate.yml)
+
+Enterprise-grade HIPAA compliance automation demonstrating Infrastructure-as-Code, Policy-as-Code, and cryptographic evidence chains.
+
+**Capstone Project** | **May 2026** | **Gideon Okechukwu**
+
+---
+
+## 🎯 Project Overview
+
+Automated compliance enforcement for a cloud-native patient intake API handling Protected Health Information (PHI). The system implements the HIPAA Security Rule through automated policy checks, preventing non-compliant infrastructure from reaching production.
+
+### Key Features
+
+- ✅ **6 Automated Policies** - Rego policies enforcing HIPAA controls
+- ✅ **100% Test Coverage** - 13/13 unit tests passing
+- ✅ **Fail-Closed Enforcement** - Non-compliant changes blocked at CI/CD
+- ✅ **Cryptographic Signatures** - Cosign keyless signing for evidence
+- ✅ **Immutable Audit Trail** - S3 Object Lock with 90-day retention
+- ✅ **75% Gap Closure** - 6 of 8 security gaps remediated
+
+---
+
+## 🏗️ Architecture
+
+GitHub Actions Pipeline → Policy Check (Conftest) → Deploy → Sign → Evidence Vault
+↓ FAIL = BLOCK
+↓ PASS = CONTINUE
+Patient Intake API
+├── API Gateway
+├── Lambda (VPC)
+├── DynamoDB (KMS)
+├── S3 (KMS, Versioning, TLS-only)
+└── CloudTrail (Multi-region)
+
+**Tech Stack:** Terraform | OPA/Rego | GitHub Actions | AWS | Cosign
+
+---
+
+## 📋 HIPAA Controls Implemented
+
+| Control | Requirement | Implementation | Policy |
+|---------|-------------|----------------|--------|
+| 164.312(a)(2)(iv) | Encryption/Decryption | KMS CMK for S3 + DynamoDB | `gap01`, `gap02` |
+| 164.312(e)(1) | Transmission Security | TLS-only S3, Lambda in VPC | `gap03`, `gap05` |
+| 164.308(a)(7) | Contingency Plan | S3 versioning | `gap04` |
+| 164.312(a)(1) | Access Control | Least privilege IAM | `gap07` |
+| 164.312(b) | Audit Controls | CloudTrail data events | - |
+| 164.308(a)(1)(ii)(D) | Activity Review | Evidence vault | - |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- AWS Account with credentials configured
+- Terraform 1.9.0+
+- OPA 0.55.0+
+- GitHub repository
+
+### Local Development
+
+```bash
+# Clone repository
+git clone https://github.com/Chike2020/cgep-app-starter
+cd cgep-app-starter
+
+# Initialize Terraform
+cd terraform
+terraform init
+
+# Run policy tests
+cd ../policies/hipaa
+opa test . -v
+
+# Deploy infrastructure
+cd ../../terraform
+terraform plan
+terraform apply
+```
+
+### CI/CD Pipeline
+
+The GitHub Actions pipeline runs automatically on:
+- **Pull Requests** - Policy check only (no deployment)
+- **Push to main** - Full pipeline including deployment, signing, evidence upload
+
+**Workflow:** `.github/workflows/hipaa-compliance-gate.yml`
+
+---
+
+## 🧪 Testing
+
+### Policy Tests
+
+```bash
+cd policies/hipaa
+opa test . -v
+```
+
+**Result:** `13/13 tests passing`
+
+### Integration Tests
+
+- **RED PR** - [#1](https://github.com/Chike2020/cgep-app-starter/pull/1) - BLOCKED (3 violations)
+- **GREEN PR** - [#2](https://github.com/Chike2020/cgep-app-starter/pull/2) - PASSED (merged)
+
+---
+
+## 📊 Project Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Security Gaps Closed** | 6 of 8 (75%) |
+| **Policy Tests** | 13/13 passing |
+| **Infrastructure Resources** | 50+ AWS resources |
+| **Pipeline Steps** | 5 automated stages |
+| **Evidence Bundles** | Cryptographically signed |
+| **Lines of Code** | 6,000+ (Terraform + Rego) |
+
+---
+
+## 📁 Repository Structure
+cgep-app-starter/
+├── .github/
+│   └── workflows/
+│       └── hipaa-compliance-gate.yml    # CI/CD pipeline
+├── policies/
+│   └── hipaa/
+│       ├── gap01_s3_kms_encryption.rego
+│       ├── gap02_dynamodb_kms.rego
+│       ├── gap03_s3_tls_only.rego
+│       ├── gap04_s3_versioning.rego
+│       ├── gap05_lambda_vpc.rego
+│       ├── gap07_iam_least_privilege.rego
+│       └── *_test.rego                  # Unit tests
+├── terraform/
+│   ├── main.tf                          # Core infrastructure
+│   ├── kms.tf                           # Encryption keys
+│   ├── cloudtrail.tf                    # Audit logging
+│   ├── evidence-vault.tf                # Immutable storage
+│   ├── github-oidc.tf                   # CI/CD authentication
+│   └── backend.tf                       # S3 state backend
+├── oscal/
+│   └── component-definition.json        # Compliance documentation
+├── WRITEUP.md                           # Detailed project writeup
+├── CAPSTONE-PLAN.md                     # Implementation plan
+└── README.md                            # This file
+
+---
+
+## 🔐 Evidence Vault
+
+**Bucket:** `s3://acme-health-intake-evidence-vault-eca8c0d5`
+
+Each pipeline run stores:
+- Terraform plan (JSON + binary)
+- SHA-256 hash
+- Cosign signature bundle
+- Execution metadata
+
+**Retention:** 90 days (COMPLIANCE mode - immutable)
+
+**Example:**
+runs/26318352453/
+├── evidence-26318352453-{sha}.tar.gz
+├── evidence-26318352453-{sha}.tar.gz.sha256
+├── evidence-26318352453-{sha}.tar.gz.sig.bundle
+└── receipt.json
+
+---
+
+## 📚 Documentation
+
+- **[WRITEUP.md](WRITEUP.md)** - Comprehensive project documentation
+- **[CAPSTONE-PLAN.md](CAPSTONE-PLAN.md)** - Implementation timeline
+- **[OSCAL Component](oscal/component-definition.json)** - Machine-readable compliance
+
+---
+
+## 🎓 Capstone Completion
+
+**Status:** ✅ COMPLETE (May 2026)
+
+- [x] Week 1: Infrastructure deployment (6 gaps closed)
+- [x] Week 2: Policy automation & CI/CD pipeline
+- [x] Week 3: OSCAL documentation & writeup
+
+**Timeline:** 3 weeks (1 week ahead of schedule)
+
+---
+
+## 🤝 Contributing
+
+This is a capstone project and not accepting external contributions. However, feel free to fork and adapt for your own HIPAA compliance needs.
+
+---
+
+## 📄 License
+
+Educational project - See institution guidelines for usage rights.
+
+---
+
+## 👤 Author
+
+**Gideon Okechukwu**
+
+- GitHub: [@Chike2020](https://github.com/Chike2020)
+- Certifications: CISSP, PMP, Security+, NY Bar (2020)
+- LinkedIn: [Connect with me](https://linkedin.com)
+
+---
+
+## 🙏 Acknowledgments
+
+- HIPAA Security Rule guidance from HHS.gov
+- OPA/Rego documentation from Open Policy Agent
+- Cosign documentation from Sigstore
+- CGE-P program curriculum and labs
+
+---
+
+**Built with ❤️ for compliance automation**
