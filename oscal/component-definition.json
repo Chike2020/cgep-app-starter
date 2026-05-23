@@ -133,6 +133,26 @@
                 "responsible-roles": [{ "role-id": "provider" }]
               },
               {
+                "uuid": "b3cc5f7e-1a2b-4c8d-9e0f-1a2b3c4d5e6f",
+                "control-id": "soc2-cc7.2",
+                "description": "System Monitoring — the entity monitors system components and the operation of those components for anomalies that are indicative of malicious acts, natural disasters, and errors affecting the entity's ability to meet its objectives (SOC 2 CC7.2); and detects security events (CMMC SI.L2-3.14.6).",
+                "statements": [
+                  {
+                    "statement-id": "soc2-cc7.2-stmt-1",
+                    "uuid": "c4dd6a8f-2b3c-5d9e-af10-2b3c4d5e6f7a",
+                    "description": "GAP-06 remediated via aws_lambda_function.drift_detector (terraform/monitoring.tf). The function carries DataClass=phi tag and is hardened with: (1) aws_sqs_queue.drift_detector_dlq — KMS-encrypted SQS dead-letter queue capturing failed invocations; (2) reserved_concurrent_executions=5 preventing resource exhaustion. Rego policy gap06_lambda_dlq_concurrency enforces both controls at CI/CD plan time via conftest, ensuring any new PHI-tagged Lambda added to the workload also carries a DLQ and concurrency limit. EventBridge rule aws_cloudwatch_event_rule.daily_drift_check triggers the Lambda daily; NON_COMPLIANT Config state changes route to aws_sns_topic.compliance_alerts via aws_cloudwatch_event_rule.config_compliance_change."
+                  }
+                ],
+                "props": [
+                  { "name": "implementation-status", "value": "implemented" },
+                  { "name": "gap-ids", "value": "GAP-06" },
+                  { "name": "terraform-resources", "value": "aws_lambda_function.drift_detector, aws_sqs_queue.drift_detector_dlq, aws_cloudwatch_event_rule.daily_drift_check, aws_sns_topic.compliance_alerts" },
+                  { "name": "rego-policies", "value": "policies/hipaa/gap06_lambda_dlq_concurrency.rego" },
+                  { "name": "secondary-framework", "value": "CMMC SI.L2-3.14.6" }
+                ],
+                "responsible-roles": [{ "role-id": "provider" }]
+              },
+              {
                 "uuid": "a8aa4a1c-e364-4f67-b881-04c8fca2e4de",
                 "control-id": "hipaa-164.308-a.1.ii.D",
                 "description": "Information System Activity Review — implement procedures to regularly review records of information system activity (audit logs, access reports, security incident tracking).",
