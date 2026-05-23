@@ -5,6 +5,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    # Daily scheduled evidence collection at 02:00 UTC
+    - cron: "0 2 * * *"
 
 permissions:
   id-token: write
@@ -14,7 +17,7 @@ permissions:
 jobs:
   compliance-gate:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,6 +37,14 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
+      - name: Terraform Format Check
+        working-directory: ./terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: ./terraform
+        run: terraform validate
+
       - name: Terraform Plan
         id: plan
         working-directory: ./terraform
@@ -43,64 +54,78 @@ jobs:
 
       - name: Install Conftest
         run: |
-          wget https://github.com/open-policy-agent/conftest/releases/download/v0.55.0/conftest_0.55.0_Linux_x86_64.tar.gz
+          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.55.0/conftest_0.55.0_Linux_x86_64.tar.gz
           tar xzf conftest_0.55.0_Linux_x86_64.tar.gz
           sudo mv conftest /usr/local/bin/
           conftest --version
 
       - name: Policy Check (Conftest)
+        id: conftest
         working-directory: ./terraform
         run: |
+          conftest test plan.json -p ../policies/hipaa/ --all-namespaces --output json | tee ../conftest-results.json
+          # Exit non-zero if any violations found (conftest already does this, but be explicit)
           conftest test plan.json -p ../policies/hipaa/ --all-namespaces
 
+      - name: Run OPA Unit Tests
+        run: |
+          # Install OPA for policy unit tests
+          curl -sL https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static -o /tmp/opa
+          chmod +x /tmp/opa
+          sudo mv /tmp/opa /usr/local/bin/opa
+          opa test policies/hipaa/ -v 2>&1 | tee opa-test-results.txt
+
+      - name: Upload Scan Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-scan-results-${{ github.run_id }}
+          path: |
+            conftest-results.json
+            opa-test-results.txt
+            terraform/plan.json
+          retention-days: 90
+
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'schedule'
         working-directory: ./terraform
         run: terraform apply -auto-approve tfplan
 
       - name: Install Cosign
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'schedule'
         uses: sigstore/cosign-installer@v3
 
       - name: Bundle and Sign Evidence
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'schedule'
         working-directory: ./terraform
         run: |
-          # Create evidence bundle
           mkdir -p evidence
           cp plan.json evidence/
-          [ -f tfplan ] && cp tfplan evidence/ || true
-          
-          # Create tarball with fixed name
+          cp ../conftest-results.json evidence/ 2>/dev/null || true
+          cp ../opa-test-results.txt evidence/ 2>/dev/null || true
+
           BUNDLE_NAME="evidence-${{ github.run_id }}-${{ github.sha }}.tar.gz"
           tar -czf "$BUNDLE_NAME" evidence/
-          
-          # Generate SHA256
+
           sha256sum "$BUNDLE_NAME" | awk '{print $1}' > "$BUNDLE_NAME.sha256"
-          
-          # Sign with Cosign (keyless)
+
           cosign sign-blob "$BUNDLE_NAME" \
             --bundle "$BUNDLE_NAME.sig.bundle" \
             --yes
-          
-          # Create receipt
-          echo "{\"run_id\":\"${{ github.run_id }}\",\"sha\":\"${{ github.sha }}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > receipt.json
+
+          echo "{\"run_id\":\"${{ github.run_id }}\",\"sha\":\"${{ github.sha }}\",\"trigger\":\"${{ github.event_name }}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > receipt.json
 
       - name: Upload to Evidence Vault
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'schedule'
         working-directory: ./terraform
         run: |
-          VAULT_BUCKET="acme-health-intake-evidence-vault-eca8c0d5"
+          VAULT_BUCKET=$(terraform output -raw evidence_vault_bucket)
           RUN_PATH="runs/${{ github.run_id }}"
           BUNDLE_NAME="evidence-${{ github.run_id }}-${{ github.sha }}.tar.gz"
-          
-          aws s3 cp "$BUNDLE_NAME" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
-          aws s3 cp "$BUNDLE_NAME.sha256" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+
+          aws s3 cp "$BUNDLE_NAME"            "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+          aws s3 cp "$BUNDLE_NAME.sha256"     "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
           aws s3 cp "$BUNDLE_NAME.sig.bundle" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
-          aws s3 cp receipt.json "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
-          
-          echo "Evidence uploaded to s3://$VAULT_BUCKET/$RUN_PATH/"STANDARD
-          aws s3 cp "$BUNDLE_NAME.sig.bundle" "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
-          aws s3 cp receipt.json "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
-          
+          aws s3 cp receipt.json              "s3://$VAULT_BUCKET/$RUN_PATH/" --storage-class STANDARD
+
           echo "Evidence uploaded to s3://$VAULT_BUCKET/$RUN_PATH/"

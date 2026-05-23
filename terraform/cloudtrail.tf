@@ -9,9 +9,9 @@ resource "aws_s3_bucket" "cloudtrail_logs" {
   bucket = "${local.name_prefix}-cloudtrail-${local.suffix}"
 
   tags = {
-    Name       = "${local.name_prefix}-cloudtrail"
-    Purpose    = "audit-logs"
-    Compliance = "hipaa"
+    Name         = "${local.name_prefix}-cloudtrail"
+    Purpose      = "audit-logs"
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-b"
   }
 }
@@ -122,8 +122,8 @@ resource "aws_cloudtrail" "main" {
   }
 
   tags = {
-    Name       = "${local.name_prefix}-trail"
-    Compliance = "hipaa"
+    Name         = "${local.name_prefix}-trail"
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-b"
   }
 

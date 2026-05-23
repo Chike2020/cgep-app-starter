@@ -10,9 +10,9 @@ resource "aws_kms_key" "phi" {
   enable_key_rotation     = true
 
   tags = {
-    Name        = "${local.name_prefix}-phi-cmk"
-    Purpose     = "phi-encryption"
-    Compliance  = "hipaa"
+    Name         = "${local.name_prefix}-phi-cmk"
+    Purpose      = "phi-encryption"
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-a-2-iv"
   }
 }

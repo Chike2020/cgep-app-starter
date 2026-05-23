@@ -46,8 +46,8 @@ resource "aws_dynamodb_table" "intake_compliant" {
     enabled = true
   }
 
- tags = {
-    Compliance  = "hipaa"
+  tags = {
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-a-2-iv"
   }
 }
@@ -115,8 +115,8 @@ resource "aws_security_group" "lambda" {
   }
 
   tags = {
-    Name        = "${local.name_prefix}-lambda-sg"
-    Compliance  = "hipaa"
+    Name         = "${local.name_prefix}-lambda-sg"
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-e-1"
   }
 }
@@ -145,7 +145,7 @@ resource "aws_lambda_function" "intake_vpc" {
   }
 
   tags = {
-    Compliance  = "hipaa"
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-e-1"
   }
 }

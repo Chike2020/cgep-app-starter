@@ -183,7 +183,7 @@ resource "aws_iam_role_policy" "lambda_inline" {
       {
         Effect   = "Allow"
         Action   = "s3:*"
-        Resource = ["${aws_s3_bucket.uploads.arn}", "${aws_s3_bucket.uploads.arn}/*"]
+        Resource = [aws_s3_bucket.uploads.arn, "${aws_s3_bucket.uploads.arn}/*"]
       }
     ]
   })

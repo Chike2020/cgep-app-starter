@@ -12,9 +12,9 @@ resource "aws_s3_bucket" "evidence_vault" {
   bucket = "${local.name_prefix}-evidence-vault-${random_id.vault_suffix.hex}"
 
   tags = {
-    Name       = "${local.name_prefix}-evidence-vault"
-    Purpose    = "audit-evidence"
-    Compliance = "hipaa"
+    Name         = "${local.name_prefix}-evidence-vault"
+    Purpose      = "audit-evidence"
+    Compliance   = "hipaa"
     HIPAAControl = "164-312-b"
   }
 }

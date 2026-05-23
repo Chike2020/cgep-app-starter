@@ -5,7 +5,7 @@ resource "aws_s3_bucket" "test_compliant" {
 
   tags = {
     Name      = "test-compliant"
-    DataClass = "public"  # NOT PHI - policies don't apply
+    DataClass = "public" # NOT PHI - policies don't apply
     Purpose   = "policy-test"
   }
 }

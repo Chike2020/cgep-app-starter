@@ -24,15 +24,21 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 
 \*\*Key Achievements:\*\*
 
-\- 6 of 8 security gaps closed with Infrastructure-as-Code
+\- 7 of 8 security gaps closed with Infrastructure-as-Code
 
-\- 6 automated Rego policies enforcing HIPAA controls
+\- 7 automated Rego policies enforcing HIPAA controls (GAP-01 through GAP-07)
 
-\- 100% policy test coverage (13/13 tests passing)
+\- 100% policy test coverage (17/17 tests passing)
 
-\- Full CI/CD pipeline with fail-closed compliance gates
+\- Full CI/CD pipeline with fail-closed compliance gates and artifact preservation
 
-\- Cryptographically signed evidence bundles in immutable vault
+\- Cryptographically signed evidence bundles in immutable vault with daily scheduled collection
+
+\- Continuous monitoring: AWS Config rules + EventBridge + drift detection Lambda
+
+\- Bidirectional control-to-code mapping table (controls-mapping.csv)
+
+\- Terraform native integration tests (terraform/tests/hipaa\_controls.tftest.hcl)
 
 \- Proven enforcement via RED/GREEN test PRs
 
@@ -40,13 +46,13 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 
 \*\*Business Impact:\*\*
 
-\- \*\*Risk Reduction:\*\* Automated detection prevents HIPAA violations before deployment
+\- \*\*Risk Reduction:\*\* Automated detection prevents violations at deploy time and detects runtime drift daily
 
-\- \*\*Audit Readiness:\*\* Immutable evidence trail with 90-day retention
+\- \*\*Audit Readiness:\*\* Immutable evidence trail with 90-day retention, cosign signatures, daily scheduled collection
 
-\- \*\*Cost Savings:\*\* Infrastructure-as-Code reduces manual compliance reviews
+\- \*\*Cost Savings:\*\* Infrastructure-as-Code eliminates manual compliance reviews
 
-\- \*\*Security Posture:\*\* 75% gap closure rate (6 of 8 controls implemented)
+\- \*\*Security Posture:\*\* 87.5% gap closure rate (7 of 8 controls implemented)
 
 
 
@@ -134,15 +140,21 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 
 \*\*Key Achievements:\*\*
 
-\- 6 of 8 security gaps closed with Infrastructure-as-Code
+\- 7 of 8 security gaps closed with Infrastructure-as-Code
 
-\- 6 automated Rego policies enforcing HIPAA controls
+\- 7 automated Rego policies enforcing HIPAA controls (GAP-01 through GAP-07)
 
-\- 100% policy test coverage (13/13 tests passing)
+\- 100% policy test coverage (17/17 tests passing)
 
-\- Full CI/CD pipeline with fail-closed compliance gates
+\- Full CI/CD pipeline with fail-closed compliance gates and artifact preservation
 
-\- Cryptographically signed evidence bundles in immutable vault
+\- Cryptographically signed evidence bundles in immutable vault with daily scheduled collection
+
+\- Continuous monitoring: AWS Config rules + EventBridge + drift detection Lambda
+
+\- Bidirectional control-to-code mapping table (controls-mapping.csv)
+
+\- Terraform native integration tests (terraform/tests/hipaa\_controls.tftest.hcl)
 
 \- Proven enforcement via RED/GREEN test PRs
 
@@ -150,13 +162,13 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 
 \*\*Business Impact:\*\*
 
-\- \*\*Risk Reduction:\*\* Automated detection prevents HIPAA violations before deployment
+\- \*\*Risk Reduction:\*\* Automated detection prevents violations at deploy time and detects runtime drift daily
 
-\- \*\*Audit Readiness:\*\* Immutable evidence trail with 90-day retention
+\- \*\*Audit Readiness:\*\* Immutable evidence trail with 90-day retention, cosign signatures, daily scheduled collection
 
-\- \*\*Cost Savings:\*\* Infrastructure-as-Code reduces manual compliance reviews
+\- \*\*Cost Savings:\*\* Infrastructure-as-Code eliminates manual compliance reviews
 
-\- \*\*Security Posture:\*\* 75% gap closure rate (6 of 8 controls implemented)
+\- \*\*Security Posture:\*\* 87.5% gap closure rate (7 of 8 controls implemented)
 
 
 
@@ -412,7 +424,7 @@ resource "aws\_kms\_key" "phi" {
 
 \*\*Evidence:\*\*
 
-\- KMS Key ID: `c280240c-d284-4309-856c-4eda5ff7463e`
+\- KMS Key ID: `<redacted — see terraform output kms_key_id after apply>`
 
 \- Auto-rotation: Enabled
 
@@ -868,15 +880,99 @@ gap07\_iam\_least\_privilege: 2/2
 
 \*\*Pipeline Steps:\*\*
 
-1\. \*\*Terraform Plan\*\* - Generate execution plan
+1\. \*\*Terraform Format Check\*\* - Verify fmt compliance (blocks on violations)
 
-2\. \*\*Conftest Policy Check\*\* - Enforce Rego policies (GATE)
+2\. \*\*Terraform Validate\*\* - Syntax and schema validation
 
-3\. \*\*Terraform Apply\*\* - Deploy (only on main branch)
+3\. \*\*Terraform Plan\*\* - Generate execution plan
 
-4\. \*\*Cosign Sign\*\* - Sign evidence bundle
+4\. \*\*Conftest Policy Check\*\* - Enforce Rego policies (GATE — exits non-zero on violations)
 
-5\. \*\*Upload to Vault\*\* - Store in immutable S3 bucket
+5\. \*\*OPA Unit Tests\*\* - Run all gap\*\_test.rego suites, emit results artifact
+
+6\. \*\*Upload Scan Artifacts\*\* - conftest-results.json + opa-test-results.txt preserved for 90 days
+
+7\. \*\*Terraform Apply\*\* - Deploy (only on main push or schedule)
+
+8\. \*\*Cosign Sign\*\* - Sign evidence bundle (keyless)
+
+9\. \*\*Upload to Vault\*\* - Store in immutable S3 bucket with Object Lock
+
+
+
+\*\*Triggers:\*\* pull\_request to main, push to main, daily cron (02:00 UTC) for scheduled evidence collection.
+
+
+
+\---
+
+
+
+\## Continuous Monitoring \& Drift Detection
+
+
+
+\### Architecture (terraform/monitoring.tf)
+
+
+
+Runtime drift detection runs independently of CI/CD to catch changes made outside Terraform (e.g., console edits, misconfigured resources, manual IAM changes).
+
+
+
+\*\*AWS Config Rules:\*\*
+
+\- `S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED` — GAP-01 (HIPAA 164.312(a)(2)(iv))
+
+\- `S3_BUCKET_SSL_REQUESTS_ONLY` — GAP-03 (HIPAA 164.312(e)(1))
+
+\- `S3_BUCKET_VERSIONING_ENABLED` — GAP-04 (HIPAA 164.308(a)(7))
+
+\- `DYNAMODB_PITR_ENABLED` — GAP-02 (HIPAA 164.312(a)(2)(iv))
+
+\- `LAMBDA_INSIDE_VPC` — GAP-05 (HIPAA 164.312(e)(1))
+
+\- `IAM_NO_INLINE_POLICY_CHECK` — GAP-07 (HIPAA 164.312(a)(1))
+
+\- `CMK_BACKING_KEY_ROTATION_ENABLED` — KMS rotation
+
+
+
+\*\*EventBridge:\*\* Routes `NON_COMPLIANT` Config state transitions to SNS topic (`compliance-alerts`), enabling PagerDuty/email integration.
+
+
+
+\*\*Drift Detector Lambda:\*\* Runs daily via EventBridge schedule; queries all Config rules for NON\_COMPLIANT resources and publishes a summary to SNS. Includes DLQ (SQS) and reserved concurrency — itself a GAP-06 remediation pattern.
+
+
+
+\### Control-to-Code Mapping
+
+
+
+`controls-mapping.csv` provides a bidirectional index for auditors:
+
+
+
+\| Column \| Purpose \|
+
+\|---|---|
+
+\| `gap_id` \| Named gap from GAPS.md \|
+
+\| `hipaa_control` \| HIPAA section reference \|
+
+\| `rego_policy` \| Path to the Rego file enforcing the control \|
+
+\| `terraform_resource` \| Terraform resource that remediates the gap \|
+
+\| `terraform_file` \| File containing the resource \|
+
+\| `ci_check` \| Which conftest namespace validates it \|
+
+\| `oscal_component` \| OSCAL component reference \|
+
+\| `status` \| CLOSED or OPEN with explanation \|
 
 
 
