@@ -1594,7 +1594,7 @@ Change:
 
 ```yaml
 
-role-to-assume: arn:aws:iam::973191046894:role/cgep-grc-gate-v2
+role-to-assume: arn:aws:iam::<account-id>:role/cgep-grc-gate-v2
 
 ```
 

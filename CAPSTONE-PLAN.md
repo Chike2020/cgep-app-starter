@@ -448,7 +448,7 @@ Let's build this! 🚀
 
 ### Evidence
 - Pipeline runs: https://github.com/Chike2020/cgep-app-starter/actions
-- Evidence vault: s3://acme-health-intake-evidence-vault-eca8c0d5/runs/
+- Evidence vault: s3://acme-health-intake-evidence-vault-<suffix>/runs/ (retrieve suffix with `terraform output evidence_vault_bucket`)
 - Test PRs: #1 (RED), #2 (GREEN)
 
 ### Status
