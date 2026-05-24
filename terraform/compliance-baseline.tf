@@ -53,6 +53,42 @@ resource "aws_dynamodb_table" "intake_compliant" {
 }
 
 ######################################################################
+# GAP-01 + GAP-04: S3 Lifecycle for uploads bucket
+# Checkov CKV_AWS_25 — S3 buckets should have lifecycle policies
+######################################################################
+
+resource "aws_s3_bucket_lifecycle_configuration" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  rule {
+    id     = "uploads-tiering"
+    status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
+    }
+
+    transition {
+      days          = 365
+      storage_class = "GLACIER"
+    }
+
+    expiration {
+      days = 2555 # 7 years — aligns with healthcare record-retention norms
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+
+######################################################################
 # GAP-03: S3 TLS-Only Policy
 # HIPAA 164.312(e)(1) - Transmission Security
 ######################################################################
@@ -121,6 +157,32 @@ resource "aws_security_group" "lambda" {
   }
 }
 
+######################################################################
+# GAP-06: SQS DLQ for intake Lambda functions
+# Checkov CKV_AWS_116 — Lambda DLQ configuration
+######################################################################
+
+resource "aws_sqs_queue" "intake_dlq" {
+  name              = "${local.name_prefix}-intake-dlq-${local.suffix}"
+  kms_master_key_id = aws_kms_key.phi.arn
+
+  tags = {
+    Purpose    = "intake-lambda-dlq"
+    Compliance = "hipaa"
+  }
+}
+
+# CloudWatch log groups with explicit retention (Checkov CKV_AWS_92)
+resource "aws_cloudwatch_log_group" "intake" {
+  name              = "/aws/lambda/${aws_lambda_function.intake.function_name}"
+  retention_in_days = 90
+
+  tags = {
+    Compliance   = "hipaa"
+    HIPAAControl = "164-312-b"
+  }
+}
+
 # Update Lambda with VPC configuration
 # Note: This is a separate resource to avoid recreating the function
 resource "aws_lambda_function" "intake_vpc" {
@@ -144,9 +206,25 @@ resource "aws_lambda_function" "intake_vpc" {
     }
   }
 
+  dead_letter_config {
+    target_arn = aws_sqs_queue.intake_dlq.arn
+  }
+
+  reserved_concurrent_executions = 10
+
   tags = {
     Compliance   = "hipaa"
     HIPAAControl = "164-312-e-1"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "intake_vpc" {
+  name              = "/aws/lambda/${aws_lambda_function.intake_vpc.function_name}"
+  retention_in_days = 90
+
+  tags = {
+    Compliance   = "hipaa"
+    HIPAAControl = "164-312-b"
   }
 }
 
@@ -190,6 +268,13 @@ resource "aws_iam_role_policy" "lambda_least_privilege" {
           "kms:GenerateDataKey"
         ]
         Resource = aws_kms_key.phi.arn
+      },
+      {
+        # Allow Lambda to write failed invocations to the DLQ (GAP-06)
+        Sid      = "DLQ"
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.intake_dlq.arn
       }
     ]
   })

@@ -214,6 +214,14 @@ resource "aws_lambda_function" "intake" {
     }
   }
 
+  # DLQ + concurrency limit added via compliance-baseline.tf SQS queue
+  # (intake_dlq defined there alongside the GAP-06 remediation resources)
+  dead_letter_config {
+    target_arn = aws_sqs_queue.intake_dlq.arn
+  }
+
+  reserved_concurrent_executions = 10
+
   # GAP-05: no vpc_config block. Learner expected to add one referencing
   # aws_subnet.private[*] and a hardened security group.
 }

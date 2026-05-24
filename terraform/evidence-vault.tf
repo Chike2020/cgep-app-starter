@@ -89,6 +89,35 @@ resource "aws_s3_bucket_policy" "evidence_vault_tls" {
   })
 }
 
+# Lifecycle: transition to cheaper storage after retention period.
+# IMPORTANT: Object Lock COMPLIANCE mode (90-day default retention) prevents
+# object deletion — expiration rules are intentionally omitted here because
+# S3 will refuse to delete objects within the Object Lock retention window.
+# Transitions are safe: objects stay protected, just move to cheaper storage.
+resource "aws_s3_bucket_lifecycle_configuration" "evidence_vault" {
+  bucket = aws_s3_bucket.evidence_vault.id
+
+  rule {
+    id     = "evidence-vault-tiering"
+    status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
+
+    transition {
+      days          = 365
+      storage_class = "GLACIER_IR"
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 180
+    }
+  }
+
+  depends_on = [aws_s3_bucket_object_lock_configuration.evidence_vault]
+}
+
 output "evidence_vault_bucket" {
   value       = aws_s3_bucket.evidence_vault.id
   description = "S3 bucket for immutable audit evidence"

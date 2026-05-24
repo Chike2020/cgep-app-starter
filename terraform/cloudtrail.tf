@@ -97,6 +97,40 @@ resource "aws_s3_bucket_policy" "cloudtrail_logs" {
   })
 }
 
+# Lifecycle: transition audit logs to cheaper tiers; expire after 7 years
+# HIPAA 164.312(b) does not mandate a specific retention period, but 7 years
+# is standard for healthcare audit logs.
+resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+
+  rule {
+    id     = "cloudtrail-log-tiering"
+    status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
+    }
+
+    transition {
+      days          = 365
+      storage_class = "GLACIER"
+    }
+
+    expiration {
+      days = 2555 # 7 years
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+
 # CloudTrail trail
 resource "aws_cloudtrail" "main" {
   name                          = "${local.name_prefix}-trail"

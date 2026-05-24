@@ -67,6 +67,11 @@ jobs:
           # Exit non-zero if any violations found (conftest already does this, but be explicit)
           conftest test plan.json -p ../policies/hipaa/ --all-namespaces
 
+      - name: Run Python Unit Tests (drift detector)
+        run: |
+          pip install pytest boto3 botocore
+          pytest tests/test_drift_detector.py -v 2>&1 | tee python-test-results.txt
+
       - name: Run OPA Unit Tests
         run: |
           # Install OPA for policy unit tests
@@ -83,6 +88,7 @@ jobs:
           path: |
             conftest-results.json
             opa-test-results.txt
+            python-test-results.txt
             terraform/plan.json
           retention-days: 90
 
@@ -103,6 +109,7 @@ jobs:
           cp plan.json evidence/
           cp ../conftest-results.json evidence/ 2>/dev/null || true
           cp ../opa-test-results.txt evidence/ 2>/dev/null || true
+          cp ../python-test-results.txt evidence/ 2>/dev/null || true
 
           BUNDLE_NAME="evidence-${{ github.run_id }}-${{ github.sha }}.tar.gz"
           tar -czf "$BUNDLE_NAME" evidence/
