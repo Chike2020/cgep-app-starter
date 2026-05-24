@@ -256,7 +256,7 @@ terraform init
 
 2\. \*\*Configures S3 backend:\*\*
 
-&#x20;  - Checks if `acme-health-intake-evidence-vault-eca8c0d5` bucket exists
+&#x20;  - Checks if `acme-health-intake-evidence-vault-<suffix>` bucket exists
 
 &#x20;  - Looks for `terraform/state/terraform.tfstate` key
 
@@ -666,7 +666,7 @@ Cosign normally prompts: "Sign using ephemeral key? (y/n)". In CI/CD, we can't i
 
 &#x20; run: |
 
-&#x20;   VAULT\_BUCKET="acme-health-intake-evidence-vault-eca8c0d5"
+&#x20;   VAULT\_BUCKET="acme-health-intake-evidence-vault-<suffix>"
 
 &#x20;   RUN\_PATH="runs/${{ github.run\_id }}"
 
@@ -866,7 +866,7 @@ Error: Failed to get existing workspaces: S3 bucket does not exist.
 
 \*\*Fix:\*\*
 
-1\. Verify bucket exists: `aws s3 ls s3://acme-health-intake-evidence-vault-eca8c0d5`
+1\. Verify bucket exists: `aws s3 ls s3://acme-health-intake-evidence-vault-<suffix>`
 
 2\. Check IAM permissions on `cgep-grc-gate` role
 
@@ -1076,7 +1076,7 @@ S3 versioning saves us. List previous versions:
 
 aws s3api list-object-versions \\
 
-&#x20; --bucket acme-health-intake-evidence-vault-eca8c0d5 \\
+&#x20; --bucket acme-health-intake-evidence-vault-<suffix> \\
 
 &#x20; --prefix terraform/state/terraform.tfstate
 
@@ -1112,9 +1112,9 @@ Restore previous version:
 
 aws s3api copy-object \\
 
-&#x20; --copy-source acme-health-intake-evidence-vault-eca8c0d5/terraform/state/terraform.tfstate?versionId=v123 \\
+&#x20; --copy-source acme-health-intake-evidence-vault-<suffix>/terraform/state/terraform.tfstate?versionId=v123 \\
 
-&#x20; --bucket acme-health-intake-evidence-vault-eca8c0d5 \\
+&#x20; --bucket acme-health-intake-evidence-vault-<suffix> \\
 
 &#x20; --key terraform/state/terraform.tfstate
 
@@ -1204,7 +1204,7 @@ Extract last known good plan:
 
 \# Download last successful run
 
-aws s3 cp s3://acme-health-intake-evidence-vault-eca8c0d5/runs/26318352453/evidence-\*.tar.gz .
+aws s3 cp s3://acme-health-intake-evidence-vault-<suffix>/runs/26318352453/evidence-\*.tar.gz .
 
 
 
@@ -1702,7 +1702,7 @@ Output:
 
 ```bash
 
-aws s3 cp s3://acme-health-intake-evidence-vault-eca8c0d5/runs/12345678/ . --recursive
+aws s3 cp s3://acme-health-intake-evidence-vault-<suffix>/runs/12345678/ . --recursive
 
 ```
 
