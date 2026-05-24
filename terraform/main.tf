@@ -167,7 +167,9 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# GAP-07: deliberately broad permissions on the workload data stores.
+# GAP-07 REMEDIATED: replaced wildcard dynamodb:* / s3:* with specific actions.
+# Original starter had deliberately broad permissions; compliance-baseline.tf
+# documents the full remediation (aws_iam_role_policy.lambda_least_privilege).
 resource "aws_iam_role_policy" "lambda_inline" {
   name = "intake-data-access"
   role = aws_iam_role.lambda.id
@@ -176,13 +178,20 @@ resource "aws_iam_role_policy" "lambda_inline" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = "dynamodb:*"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:Query"
+        ]
         Resource = aws_dynamodb_table.intake.arn
       },
       {
-        Effect   = "Allow"
-        Action   = "s3:*"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject"
+        ]
         Resource = [aws_s3_bucket.uploads.arn, "${aws_s3_bucket.uploads.arn}/*"]
       }
     ]
