@@ -389,7 +389,7 @@ resource "aws_cloudtrail" "main" {
 ```
 
 **Evidence:**
-- CloudTrail ARN: `arn:aws:cloudtrail:us-east-1:973191046894:trail/acme-health-intake-trail`
+- CloudTrail ARN: `arn:aws:cloudtrail:us-east-1:<account-id>:trail/acme-health-intake-trail`
 - Multi-region: Enabled
 - Log file validation: Enabled (SHA-256 digest)
 - Data events: S3 object operations on uploads bucket; DynamoDB table operations
@@ -517,7 +517,7 @@ Runtime drift detection runs independently of CI/CD to catch changes made outsid
 
 ### Evidence Vault Architecture
 
-**S3 Bucket:** `acme-health-intake-evidence-vault-eca8c0d5`
+**S3 Bucket:** `acme-health-intake-evidence-vault-<suffix>` (suffix from `terraform output evidence_vault_bucket`)
 
 **Object Lock Configuration:**
 ```hcl
@@ -719,5 +719,5 @@ trestle validate -t component-definition -n patient-intake-api
 ---
 
 **Repository:** https://github.com/Chike2020/cgep-app-starter
-**Evidence Vault:** `s3://acme-health-intake-evidence-vault-eca8c0d5`
+**Evidence Vault:** `s3://acme-health-intake-evidence-vault-<suffix>` (retrieve with `cd terraform && terraform output -raw evidence_vault_bucket`)
 **Pipeline Runs:** https://github.com/Chike2020/cgep-app-starter/actions

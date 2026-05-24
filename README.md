@@ -9,9 +9,13 @@
 
 ## What this repo is
 
-A GRC baseline wrapped around the `cgep-app-starter` Patient Intake API. It closes 7 of 8 intentional security gaps with Terraform, enforces them with 7 Rego policies via conftest, produces cryptographically signed evidence on every push to `main`, and detects runtime drift daily via AWS Config + EventBridge.
+A GRC baseline wrapped around the `cgep-app-starter` Patient Intake API. It closes **all 8 intentional security gaps** with Terraform, enforces them with **8 Rego policies** via conftest, produces cryptographically signed evidence on every push to `main`, and detects runtime drift daily via AWS Config + EventBridge.
 
 Full design rationale and trade-offs: [`WRITEUP.md`](WRITEUP.md)
+
+**Bidirectional control-to-code traceability:** [`controls-mapping.csv`](controls-mapping.csv) — maps each gap ID → HIPAA control → Rego policy file → Terraform resource → Terraform file → CI check → OSCAL component.
+
+**Monitoring & drift detection:** [`terraform/monitoring.tf`](terraform/monitoring.tf) — AWS Config rules (S3, DynamoDB, CloudTrail, KMS), EventBridge daily schedule, drift-detector Lambda (with DLQ + reserved concurrency), SNS compliance alerts.
 
 ---
 
@@ -30,16 +34,16 @@ make test   AWS_PROFILE=<your-sandbox>
 ### 2  Run policy tests locally
 
 ```bash
-# OPA unit tests (requires opa in PATH)
+# OPA unit tests — 8 policies, 20 tests (requires opa in PATH)
 opa test policies/hipaa/ -v
-# Expected: PASS 17/17
+# Expected: PASS 20/20
 
-# Terraform validation
+# Terraform validation + native integration tests
 cd terraform
 terraform init
-terraform fmt -check -recursive   # exit 0
-terraform validate                 # Success!
-terraform test -test-directory=tests/  # 10/10 passed
+terraform fmt -check -recursive          # exit 0
+terraform validate                        # Success!
+terraform test -test-directory=tests/    # 11/11 passed
 ```
 
 ### 3  Verify the evidence vault
@@ -79,7 +83,34 @@ aws s3api get-object-retention \
 | [#1](https://github.com/Chike2020/cgep-app-starter/pull/1) | TEST RED: S3 bucket without KMS | Blocked (policy gate fired) |
 | [#2](https://github.com/Chike2020/cgep-app-starter/pull/2) | TEST GREEN: Non-PHI bucket | Merged (all policies passed) |
 
-### 5  Validate OSCAL with trestle
+### 5  Verify monitoring infrastructure (`terraform/monitoring.tf`)
+
+```bash
+# List all AWS Config rules deployed
+aws configservice describe-config-rules \
+  --query 'ConfigRules[*].ConfigRuleName' --output table
+
+# Verify EventBridge daily drift-check rule
+aws events describe-rule --name acme-health-intake-daily-drift-check
+
+# Check drift-detector Lambda configuration
+aws lambda get-function-configuration \
+  --function-name $(cd terraform && terraform output -raw drift_detector_function_name) \
+  --query '{Runtime:Runtime,ReservedConcurrency:reserved_concurrent_executions,DLQ:DeadLetterConfig}'
+
+# Verify SNS compliance alerts topic
+aws sns list-topics --query 'Topics[*].TopicArn' | grep compliance-alerts
+```
+
+Monitoring resources defined in [`terraform/monitoring.tf`](terraform/monitoring.tf):
+- `aws_config_configuration_recorder.hipaa` — continuous Config recording
+- `aws_config_config_rule.*` — 4 managed rules (S3 encryption, DynamoDB encryption, CloudTrail enabled, KMS rotation)
+- `aws_cloudwatch_event_rule.daily_drift_check` — EventBridge cron (02:00 UTC daily)
+- `aws_lambda_function.drift_detector` — queries Config, publishes NON_COMPLIANT findings to SNS
+- `aws_sqs_queue.drift_detector_dlq` — KMS-encrypted DLQ (GAP-06 remediation)
+- `aws_sns_topic.compliance_alerts` — fanout for real-time drift notifications
+
+### 6  Validate OSCAL with trestle
 
 ```bash
 pip install compliance-trestle
@@ -89,6 +120,19 @@ trestle import -f /path/to/repo/oscal/component-definition.json -o patient-intak
 trestle validate -t component-definition -n patient-intake-api
 # Expected: VALID: Model passed all registered validation tests
 ```
+
+### 7  Inspect the bidirectional control mapping
+
+```bash
+# View the full gap → control → policy → resource → CI traceability table
+column -t -s, controls-mapping.csv | less -S
+```
+
+[`controls-mapping.csv`](controls-mapping.csv) provides the bidirectional mapping:
+- **Forward:** Gap ID → HIPAA control → Rego policy → Terraform resource → CI check
+- **Backward:** OSCAL component → Terraform resource → Rego policy → Gap ID
+
+All 8 gaps (GAP-01 through GAP-08) plus 5 supporting controls are tracked.
 
 ---
 
@@ -112,11 +156,27 @@ See [`controls-mapping.csv`](controls-mapping.csv) for the bidirectional gap →
 ## Repo layout
 
 ```
-terraform/            # IaC — KMS, S3 Object Lock vault, CloudTrail, compliance baseline, monitoring
-  tests/              # Terraform native integration tests (10/10 pass with mock_provider)
-policies/hipaa/       # 7 Rego policies + tests (17/17 OPA tests pass)
-oscal/                # OSCAL component-definition.json (trestle-validated)
-controls-mapping.csv  # Bidirectional control→code traceability index
-.github/workflows/    # hipaa-compliance-gate.yml: Plan → Policy check → Apply → Sign → Upload
-WRITEUP.md            # Design rationale, trade-offs, and lessons learned
+terraform/                   # IaC — KMS, S3 Object Lock vault, CloudTrail, compliance baseline
+  main.tf                    # API Gateway (GAP-08), Lambda, VPC, DynamoDB, S3 (with intentional gaps)
+  compliance-baseline.tf     # Remediations: GAP-01…GAP-08 Terraform resources
+  monitoring.tf              # AWS Config rules, EventBridge, drift-detector Lambda, SNS alerts
+  cloudtrail.tf              # Multi-region CloudTrail with KMS encryption
+  evidence-vault.tf          # S3 Object Lock COMPLIANCE vault (90-day retention)
+  kms.tf                     # KMS CMK with auto-rotation
+  tests/                     # Terraform native integration tests (11/11 pass with mock_provider)
+    hipaa_controls.tftest.hcl
+policies/hipaa/              # 8 Rego policies + unit tests (20/20 OPA tests pass)
+  gap01_s3_kms_encryption.rego          # GAP-01: S3 CMK
+  gap02_dynamodb_kms.rego               # GAP-02: DynamoDB CMK
+  gap03_s3_tls_only.rego                # GAP-03: TLS-only bucket policy
+  gap04_s3_versioning.rego              # GAP-04: S3 versioning
+  gap05_lambda_vpc.rego                 # GAP-05: Lambda VPC
+  gap06_lambda_dlq_concurrency.rego     # GAP-06: DLQ + concurrency
+  gap07_iam_least_privilege.rego        # GAP-07: IAM least privilege
+  gap08_api_gw_logging.rego             # GAP-08: API Gateway logging + throttling
+oscal/                       # OSCAL component-definition.json (trestle-validated, 8 controls)
+controls-mapping.csv         # Bidirectional control→code traceability index (gap↔policy↔resource↔OSCAL)
+.github/workflows/           # hipaa-compliance-gate.yml: Plan → conftest → Apply → Cosign → Upload
+WRITEUP.md                   # Design rationale, trade-offs, and lessons learned
+LICENSE                      # MIT License
 ```
