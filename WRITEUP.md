@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This capstone demonstrates enterprise-grade HIPAA compliance automation for a cloud-native patient intake API. The solution implements automated policy enforcement, cryptographic evidence chains, and immutable audit trails to ensure continuous HIPAA Security Rule compliance.
+This capstone demonstrates enterprise-grade compliance automation for a cloud-native patient intake API. **Primary framework: HIPAA Security Rule (45 CFR Part 164).** The solution implements automated policy enforcement, cryptographic evidence chains, and immutable audit trails to ensure continuous HIPAA Security Rule compliance. Framework choice rationale: Acme Health handles Protected Health Information (PHI); HIPAA Security Rule is the legally mandated framework. SOC 2 and CMMC controls are noted where they overlap but HIPAA is the governing standard.
 
 **Key Achievements:**
 - All 8 security gaps closed with Infrastructure-as-Code
@@ -18,7 +18,7 @@ This capstone demonstrates enterprise-grade HIPAA compliance automation for a cl
 - Cryptographically signed evidence bundles in immutable vault with daily scheduled collection
 - Continuous monitoring: AWS Config rules + EventBridge + drift detection Lambda
 - Bidirectional control-to-code mapping table (`controls-mapping.csv`)
-- Terraform native integration tests (`terraform/tests/hipaa_controls.tftest.hcl`), 10/10 passing
+- Terraform native integration tests (`terraform/tests/hipaa_controls.tftest.hcl`), 11/11 passing
 - Proven enforcement via RED/GREEN test PRs
 
 **Business Impact:**
@@ -439,7 +439,7 @@ deny contains msg if {
 
 ### Test Coverage
 
-**Unit Tests:** 17 tests across 7 policies
+**Unit Tests:** 20 tests across 8 policies
 
 | Policy | Tests | Pass |
 |--------|-------|------|
@@ -571,6 +571,8 @@ cosign verify-blob \
 
 ## Testing & Validation
 
+> **Note:** PRs #1 and #2 were opened before GAP-08 was added (commit `9d8f4eb`), so the Conftest output shows **7 tests** from the 7-policy suite active at that time. The current suite has 8 policies; running conftest against the same plan today would show 8 tests. The gate fires correctly under both counts.
+
 ### Test PR #1: RED (Blocked)
 
 **Branch:** `test-red-s3-no-kms`
@@ -614,7 +616,7 @@ contains PHI but does not have versioning enabled.
 **File:** `terraform/tests/hipaa_controls.tftest.hcl`
 **Command:** `terraform test -test-directory=tests/`
 
-Uses `mock_provider "aws"` — all 10 tests run at plan time with no real AWS credentials required. Graders can run them locally in seconds.
+Uses `mock_provider "aws"` — all 11 tests run at plan time with no real AWS credentials required. Graders can run them locally in seconds.
 
 | Test | What it asserts |
 |------|-----------------|
@@ -628,8 +630,9 @@ Uses `mock_provider "aws"` — all 10 tests run at plan time with no real AWS cr
 | `gap07_iam_least_privilege_no_wildcard` | Least-privilege policy resource exists by name |
 | `monitoring_config_recorder_exists` | `aws_config_configuration_recorder.hipaa` present |
 | `monitoring_drift_detector_has_dlq` | Drift detector Lambda has DLQ and reserved concurrency |
+| `gap08_api_gw_access_logging_enabled` | API Gateway stage has `access_log_settings`, 90-day log group, `throttling_burst_limit > 0` |
 
-**Result: 10/10 passing**
+**Result: 11/11 passing**
 
 ---
 
@@ -697,6 +700,68 @@ trestle validate -t component-definition -n patient-intake-api
 1. **Policy-First Development** — Writing Rego policies before the Terraform resources forced security thinking upfront and caught design issues before they reached apply
 2. **Test-Driven Compliance** — The RED/GREEN PR pattern gives auditors a reproducible demonstration that the gate actually blocks violations, not just that policies exist
 3. **Evidence Automation** — Manual evidence collection is error-prone; automated daily collection at 02:00 UTC ensures continuous coverage even on days with no code changes
+
+---
+
+## Design Trade-offs
+
+The brief requires an explicit discussion of trade-offs accepted. Here is a frank account of each decision with its cost.
+
+### 1. Single AWS account vs. separate evidence vault account
+
+**Chose:** Single account (evidence vault in the same account as the workload).
+
+**Trade-off:** A workload operator with `s3:DeleteBucket` or `kms:ScheduleKeyDeletion` can, in theory, attack the evidence that accuses them. A separate account removes that blast radius.
+
+**Why accepted:** The capstone sandbox is a single account. COMPLIANCE mode Object Lock mitigates the most serious risk — even root cannot delete locked objects before the retention period expires. A separate account is explicitly flagged as the production-grade answer in Future Work.
+
+### 2. GAP-05 — separate Lambda rather than in-place VPC config
+
+**Chose:** New resource `aws_lambda_function.intake_vpc` instead of modifying `aws_lambda_function.intake`.
+
+**Trade-off:** The original `intake` function still exists without VPC config. Updating it in place would require a recreation, disrupting the API Gateway integration.
+
+**Why accepted:** The policy gate (`gap05_lambda_vpc.rego`) enforces VPC on all PHI-tagged Lambdas, so any new Lambda added to the workload is covered. The starter's original resource is intentionally non-compliant by spec; the compliant version routes traffic correctly.
+
+### 3. GAP-06 DLQ enforcement via tag-based scoping
+
+**Chose:** `gap06_lambda_dlq_concurrency.rego` gates on `DataClass = "phi"` tag instead of applying to all Lambdas.
+
+**Trade-off:** Non-PHI Lambdas (e.g., utility functions) are not forced to carry a DLQ.
+
+**Why accepted:** HIPAA scope is PHI data. Applying DLQ enforcement globally would block non-PHI workloads that legitimately don't need one, creating friction without compliance value. The scope is documented in the policy metadata.
+
+### 4. GOVERNANCE vs. COMPLIANCE mode Object Lock
+
+**Chose:** COMPLIANCE mode on the evidence vault.
+
+**Trade-off:** COMPLIANCE mode means there is no override; a mistake (wrong retention period, wrong object) cannot be corrected for 90 days, even by an administrator.
+
+**Why accepted:** The audit-grade requirement is that evidence cannot be tampered with. COMPLIANCE mode is the only mode that holds even against privileged users. The 90-day window was chosen to exceed the 60-day HIPAA minimum while remaining operationally manageable.
+
+### 5. Cosign keyless signing vs. long-lived key
+
+**Chose:** Keyless signing (Sigstore Fulcio + Rekor) over a stored KMS signing key.
+
+**Trade-off:** Verification requires Sigstore's public infrastructure to be available. If the Rekor transparency log or Fulcio CA is unreachable, offline verification is not straightforward.
+
+**Why accepted:** Keyless signing eliminates an entire key management lifecycle (rotation, revocation, storage). The identity binding is to the specific GitHub workflow run — stronger provenance than a static key that any key holder could use. Sigstore's public infrastructure has high availability guarantees.
+
+### 6. "Apply on push to main" vs. manual approval gate
+
+**Chose:** Automatic apply on `push` to `main` (no manual approval step).
+
+**Trade-off:** A bad commit that passes policy checks will be applied without human sign-off.
+
+**Why accepted:** The policy gate is the approval mechanism. If the gate passes, the change is compliant. Adding a manual gate would add latency without adding compliance value, since the person approving cannot validate Terraform correctness better than the policy suite can. A manual gate would be appropriate if the pipeline were managing production patient data — not a sandbox.
+
+### 7. What I did not get to (honest gaps)
+
+- **WAF on API Gateway:** GAP-08 closes access logging and throttling but does not add a WAF for injection protection. Included in Future Work.
+- **DynamoDB data migration:** The compliant table (`intake_compliant`) is a net-new resource. In a production scenario you would migrate existing PHI rows from the original table and deprecate it. That migration was out of scope for this capstone.
+- **VPC endpoints for S3 and DynamoDB:** Lambda runs in a private VPC subnet, but traffic to AWS services currently egresses via the internet gateway. VPC Interface Endpoints would eliminate the internet path entirely — appropriate for production PHI handling.
+- **SNS subscriber:** The `compliance_alerts` SNS topic has no subscriber. In production it would fan out to a PagerDuty or email integration. Wiring a real endpoint requires external credentials beyond the scope of a sandbox.
+- **Multi-environment state isolation:** There is one Terraform workspace. Dev, staging, and production would each need separate state backends and policy strictness tiers.
 
 ---
 
