@@ -13,7 +13,7 @@ This capstone demonstrates enterprise-grade compliance automation for a cloud-na
 **Key Achievements:**
 - All 8 security gaps closed with Infrastructure-as-Code
 - 8 automated Rego policies enforcing HIPAA controls (GAP-01 through GAP-08)
-- 100% policy test coverage (20/20 OPA tests passing)
+- 100% policy test coverage (21/21 OPA unit tests passing)
 - Full CI/CD pipeline with fail-closed compliance gates and artifact preservation
 - Cryptographically signed evidence bundles in immutable vault with daily scheduled collection
 - Continuous monitoring: AWS Config rules + EventBridge + drift detection Lambda
@@ -439,7 +439,7 @@ deny contains msg if {
 
 ### Test Coverage
 
-**Unit Tests:** 20 tests across 8 policies
+**Unit Tests:** 21 tests across 8 policies
 
 | Policy | Tests | Pass |
 |--------|-------|------|
@@ -449,9 +449,9 @@ deny contains msg if {
 | `gap04_s3_versioning` | 2 | ✅ 2/2 |
 | `gap05_lambda_vpc` | 2 | ✅ 2/2 |
 | `gap06_lambda_dlq_concurrency` | 4 | ✅ 4/4 |
-| `gap07_iam_least_privilege` | 2 | ✅ 2/2 |
+| `gap07_iam_least_privilege` | 3 | ✅ 3/3 |
 | `gap08_api_gw_logging` | 3 | ✅ 3/3 |
-| **Total** | **20** | **✅ 20/20** |
+| **Total** | **21** | **✅ 21/21** |
 
 Each policy has pass, fail, and non-PHI-resource (ignored) scenarios.
 

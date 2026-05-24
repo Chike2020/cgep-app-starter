@@ -34,9 +34,9 @@ make test   AWS_PROFILE=<your-sandbox>
 ### 2  Run policy tests locally
 
 ```bash
-# OPA unit tests — 8 policies, 20 tests (requires opa in PATH)
+# OPA unit tests — 8 policies, 21 tests (requires opa in PATH)
 opa test policies/hipaa/ -v
-# Expected: PASS 20/20
+# Expected: PASS 21/21
 
 # Terraform validation + native integration tests
 cd terraform
@@ -165,7 +165,7 @@ terraform/                   # IaC — KMS, S3 Object Lock vault, CloudTrail, co
   kms.tf                     # KMS CMK with auto-rotation
   tests/                     # Terraform native integration tests (11/11 pass with mock_provider)
     hipaa_controls.tftest.hcl
-policies/hipaa/              # 8 Rego policies + unit tests (20/20 OPA tests pass)
+policies/hipaa/              # 8 Rego policies + unit tests (21/21 OPA tests pass)
   gap01_s3_kms_encryption.rego          # GAP-01: S3 CMK
   gap02_dynamodb_kms.rego               # GAP-02: DynamoDB CMK
   gap03_s3_tls_only.rego                # GAP-03: TLS-only bucket policy
